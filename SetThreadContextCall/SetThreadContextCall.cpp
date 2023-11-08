@@ -1,4 +1,4 @@
-Ôªø#include <iostream>
+#include <iostream>
 #include <Windows.h>
 #include <Zydis/Zydis.h>//through vcpkg install Zydis:x64-windows:vcpkg.exe install Zydis:x64-windows-static
 #include <TlHelp32.h>
@@ -8,7 +8,9 @@
 #include <mutex>
 #include <vector>
 #include <tuple>
-#include<thread>
+#include <thread>
+#include <functional>
+#include <array>
 #if defined _WIN64
 using UDWORD = DWORD64;
 #define XIP Rip//instruction pointer
@@ -20,6 +22,7 @@ using UDWORD = DWORD32;
 #define XAX Eax//accumulator
 #define U64_ "%x"//U64_ When using, be careful not to add "%" again
 #endif
+#include"SharedPtr.h"
 UDWORD GetLength(BYTE* _buffer, UDWORD _length = 65535) {//Get the length of the function default 65535 because the function is not so long
     ZyanU64 runtime_address = (ZyanU64)_buffer;
     ZyanUSize offset = 0;
@@ -80,51 +83,76 @@ public:
         return *instance.get();//return instance
     }
 };
-
 #define EnumStatus_Continue (int)0
 #define EnumStatus_Break (int)1
-template <class... Args>
-struct ThreadData {//Thread Data Struct
+//±£¥Ê‘≠ ºpack
+#pragma pack(push)
+#pragma pack(1)
+template<typename T, typename... Args>
+class ThreadData {
+public:
     std::tuple<Args...> datas;
+    T retdata{};
+
+    template <std::size_t... Indices>
+    auto GetParamHelper(const std::tuple<Args...>& tpl, std::index_sequence<Indices...>) {
+        return std::make_tuple(std::get<Indices>(tpl)...);
+    }
+
+    auto GetParam() {
+        return GetParamHelper(datas, std::index_sequence_for<Args...>{});
+    }
 };
-template <class...Args, size_t... Indices>
-__forceinline decltype(auto) ThreadFunctionImpl(ThreadData<Args...>*threadData, std::index_sequence<Indices...>) noexcept {//thread function impliment
-    using RetType = decltype(std::get<0>(threadData->datas)(std::get<Indices + 1>(threadData->datas)...));//get return type
-    if (threadData) return std::get<0>(threadData->datas)(std::get<Indices + 1>(threadData->datas)...);//if threadData is not nullptr call function
-    return RetType();//return RetType
+template <class Fn,class T>
+struct ThreadData2 {//Thread Data Struct
+    Fn fn;
+    T retdata{};
+};
+#pragma pack(pop)
+
+template <class T, class... Args, size_t... Indices>
+decltype(auto) ThreadFunctionImpl(ThreadData<T, Args...>* threadData, std::index_sequence<Indices...>) noexcept {
+    T retdata = std::get<0>(threadData->datas)(std::get<Indices+1>(threadData->datas)...);
+    threadData->retdata = retdata;
+    return retdata;
 }
-template <class... Args>
-__declspec(noinline)  decltype(auto) ThreadFunction(void* param)noexcept {//thread function
-    auto threadData = static_cast<ThreadData<Args...>*>(param);
-    if (threadData)return ThreadFunctionImpl(threadData, std::make_index_sequence<sizeof...(Args) - 1>{});//if threadData is not nullptr call ThreadFunctionImpl
-    using RetValue = decltype(ThreadFunctionImpl(threadData, std::make_index_sequence<sizeof...(Args) - 1>{}));//get return type
-    return RetValue();//return RetValue
+
+template <class T, class... Args>
+decltype(auto) ThreadFunction(void* param) noexcept {
+    auto threadData = static_cast<ThreadData<T, Args...>*>(param);
+    return ThreadFunctionImpl(threadData, std::make_index_sequence<sizeof...(Args) - 1>{});
 }
+template <class Fn,class T>
+T ThreadFunction2(void* param) noexcept {
+    auto threadData = static_cast<ThreadData2<Fn,T>*>(param);
+    threadData->retdata = threadData->fn();
+    return threadData->retdata;
+}
+
 typedef class DATA_CONTEXT {
 public:
     BYTE ShellCode[0x30];				//x64:0X00   |->x86:0x00
     LPVOID pFunction;				    //x64:0X30	 |->x86:0x30
     PBYTE lpParameter;					//x64:0X38	 |->x86:0x34
     LPVOID OriginalEip;					//x64:0X40	 |->x86:0x38
-    char szDLLPath[MAX_PATH];			//x64:0X48	 |->x86:0x40
 }*PINJECT_DATA_CONTEXT;
 #if defined _WIN64
 inline BYTE ContextInjectShell[] = {			//x64.asm
     0x50,								//push	rax
     0x53,								//push	rbx
-    0x9c,								//pushfq							//‰øùÂ≠òflagÂØÑÂ≠òÂô®
+    0x9c,								//pushfq							//±£¥Êflagºƒ¥Ê∆˜
     0xe8,0x00,0x00,0x00,0x00,			//call	next
     0x5b,								//pop	rbx
     0x48,0x83,0xeb,0x08,				//sub	rbx,08
     0x51,								//push	rcx	
-    0x48,0x83,0xEC,0x28,				//sub	rsp,0x28					//‰∏∫call ÁöÑÂèÇÊï∞ÂàÜÈÖçÁ©∫Èó¥
-    0x48,0x8b,0x4b,0x38,				//mov	rcx,[rbx+0x38]				//lparam Ë∑ØÂæÑÂú∞ÂùÄ
-    0xff,0x53,0x30,						//call	qword ptr[rbx+0x30]			//LoadLibrary
-    0x48,0x83,0xc4,0x28,				//add	rsp,0x28					//Êí§ÈîÄ‰∏¥Êó∂Á©∫Èó¥
+    0x48,0x83,0xEC,0x28,				//sub	rsp,0x28					//Œ™call µƒ≤Œ ˝∑÷≈‰ø’º‰
+    0x48,0x8b,0x4b,0x38,				//mov	rcx,[rbx+0x38]				//lparam ¬∑æ∂µÿ÷∑
+    0xff,0x53,0x30,						//call	qword ptr[rbx+0x30]			//call threadproc
+    0x48,0x83,0xc4,0x28,				//add	rsp,0x28					//≥∑œ˙¡Ÿ ±ø’º‰
     0x59,								//pop	rcx
-    0x48,0x8b,0x43,0x40,				//mov	rax,[rbx+0x40]				//ÂèñripÂà∞rax
+    0x48,0x8b,0x43,0x40,				//mov	rax,[rbx+0x40]				//»°ripµΩrax
     0x48,0x87,0x44,0x24,0x24,			//xchg	[rsp+24],rax				
-    0x9d,								//popfq								//ËøòÂéüÊ†áÂøóÂØÑÂ≠òÂô®
+    0x9d,								//popfq								//ªπ‘≠±Í÷æºƒ¥Ê∆˜
     0x5b,								//pop	rbx
     0x58,								//pop	rax
     0xc3,								//retn		
@@ -139,31 +167,109 @@ inline BYTE ContextInjectShell[] = {	//x86.asm
     0x83,0xeb,0x08,						//sub	ebx,8
     0x3e,0xff,0x73,0x34,				//push	dword ptr ds:[ebx + 0x34]	//lparam
     0x3e,0xff,0x53,0x30,				//call	dword ptr ds:[ebx + 0x30]	//threadproc
-    0x3e,0x8b,0x43,0x38,				//mov	eax,dword ptr ds:[ebx+0x38]	//ÂèñEIPÂà∞eax
+    0x3e,0x8b,0x43,0x38,				//mov	eax,dword ptr ds:[ebx+0x38]	//»°EIPµΩeax
     0x87,0x44,0x24,0x24,				//xchg	eax,[esp+0x24]
     0x9d,								//popfd
     0x61,								//popad
     0xc3								//retn
 };
 #endif
-class Shared_Ptr;
-template<class T>Shared_Ptr make_Shared() { return Shared_Ptr(sizeof(T)); }//to make Shared_Ptr
-template<class T>Shared_Ptr make_Shared(size_t nsize) { return Shared_Ptr(sizeof(T) * nsize); }//to make Shared_Ptr
-class Thread;   //forward declaration
+class Thread {
+    HANDLE m_hThread = INVALID_HANDLE_VALUE;
+    DWORD m_dwThreadId = 0;
+    bool m_bAttached = false;
+public:
+    Thread() = default;
+    //¥Úø™œﬂ≥Ã
+    Thread(DWORD dwThreadId) {
+        m_dwThreadId = dwThreadId;
+        m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+        m_bAttached = true;
+    }
+    //¥”threadentry32ππ‘Ï
+    Thread(const THREADENTRY32& threadEntry) {
+        m_dwThreadId = threadEntry.th32ThreadID;
+        m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+        m_bAttached = true;
+    }
+    //“∆∂Øππ‘Ï
+    Thread(Thread&& other) {
+        m_hThread = other.m_hThread;
+        m_dwThreadId = other.m_dwThreadId;
+        m_bAttached = other.m_bAttached;
+        other.m_hThread = INVALID_HANDLE_VALUE;
+        other.m_dwThreadId = 0;
+        other.m_bAttached = false;
+    }
+    //“∆∂Ø∏≥÷µ
+    Thread& operator=(Thread&& other) {
+        if (this != &other) {
+            m_hThread = other.m_hThread;
+            m_dwThreadId = other.m_dwThreadId;
+            m_bAttached = other.m_bAttached;
+            other.m_hThread = INVALID_HANDLE_VALUE;
+            other.m_dwThreadId = 0;
+            other.m_bAttached = false;
+        }
+        return *this;
+    }
+    //πÿ±’œﬂ≥Ãæ‰±˙
+    ~Thread() {
+        if (m_bAttached)CloseHandle(m_hThread);
+    }
+    //ªÒ»°œﬂ≥Ãæ‰±˙
+    HANDLE GetHandle() {
+        return m_hThread;
+    }
+    bool IsRunning() {
+        //ªÒ»°œﬂ≥ÃÕÀ≥ˆ¥˙¬Î
+        DWORD dwExitCode = 0;
+        if (GetExitCodeThread(m_hThread, &dwExitCode)) {
+            if (dwExitCode == STILL_ACTIVE) {
+                return true;
+            }
+        }
+        return false;
+    }
+    //ªÒ»°…œœ¬Œƒ
+    CONTEXT GetContext() {
+        CONTEXT context = { 0 };
+        context.ContextFlags = CONTEXT_FULL;
+        GetThreadContext(m_hThread, &context);
+        return context;
+    }
+    //…Ë÷√…œœ¬Œƒ
+    void SetContext(CONTEXT& context) {
+        SetThreadContext(m_hThread, &context);
+    }
+    //‘›Õ£
+    void Suspend() {
+        SuspendThread(m_hThread);
+    }
+    //ª÷∏¥
+    void Resume() {
+        ResumeThread(m_hThread);
+    }
+};  //forward declaration
 class Process :public SingleTon<Process> {//Singleton
     HANDLE m_hProcess = INVALID_HANDLE_VALUE;
     DWORD m_pid;//process id
     std::atomic_bool m_bAttached;//atomic bool
-    friend class Shared_Ptr;
     std::vector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory
     template<typename T, typename ...Args>
-    void process(T& arg, Args&...args) {//partially specialized template
-        processparameter(arg);
-        if constexpr (sizeof...(args) > 0) process(args...);
+    void preprocess(T& arg, Args&...args) {//partially specialized template
+        preprocessparameter(arg);
+        if constexpr (sizeof...(args) > 0) preprocess(args...);
     }
-    template<typename T>void processparameter(T& arg) {}
-    void processparameter(const char*& arg);//process const char* parameter
-    void processparameter(const wchar_t*& arg);//process const wchar_t* parameter
+    template<typename T>void preprocessparameter(T& arg) {}
+    void preprocessparameter(const char*& arg);//process const char* parameter
+    void preprocessparameter(const wchar_t*& arg);//process const wchar_t* parameter
+    template<typename T>
+    void preprocessparameter(const T*& arg);//process const wchar_t* parameter
+    template<typename T,typename...Args>
+    void postprocess(T& arg, Args&...args) {
+
+    }
 public:
     void Attach(const char* _szProcessName) {//attach process
         //get process id
@@ -173,6 +279,15 @@ public:
             m_hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_pid);
             m_bAttached = true;
         }
+    }
+    //readapi
+    ULONG _ReadApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//ReadProcessMemory
+        if (m_bAttached) {
+            SIZE_T bytesRead = 0;
+            ReadProcessMemory(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
+            return bytesRead;
+        }
+        return 0;
     }
     ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//WriteProcessMemory
         if (m_bAttached) {
@@ -216,56 +331,130 @@ public:
             }
         }
     }
+    template<typename T>
+    std::size_t GetParamSize(const T& arg) {//only support tuple
+        return sizeof(arg);
+    }
+
+    template<typename T, typename... Args>
+    std::size_t GetParamSize(const T& arg, const Args&... args) {
+        return sizeof(arg) + GetParamSize(args...);
+    }
     template<class _Fn, class ...Arg>
-    void SetContextCall(_Fn&& _Fx, Arg ...args){
-        if(!m_bAttached)return;
+    decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg ...args){
+        using RetType = decltype(_Fx(args...));
+        if(!m_bAttached)return RetType();
+        RetType retdata{};
+        Thread _thread{};
+        CONTEXT _ctx{};
+        UDWORD ParamAddr = 0;
         auto lambda=[&](THREADENTRY32 te32)->int{
             auto thread = Thread(te32.th32ThreadID);
             thread.Suspend();
             auto ctx = thread.GetContext();
-            auto lpShell=_AllocMemApi(sizeof(ContextInjectShell));
+            auto lpShell=make_Shared<DATA_CONTEXT>(1,m_hProcess);
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-            if constexpr(sizeof...(args)>0) process(args...);
-            ThreadData<std::decay_t<_Fn>, std::decay_t<Arg>...> threadData{ std::tuple(std::forward<std::decay_t<_Fn>>(_Fx), std::forward<Arg>(args)...) };
-            auto pFunction = &ThreadFunction< std::decay_t<_Fn>, std::decay_t<Arg>...>;
+            if constexpr(sizeof...(args)>0) preprocess(args...);
+            ThreadData<RetType,std::decay_t<_Fn>, std::decay_t<Arg>...> threadData{ std::tuple(std::forward<std::decay_t<_Fn>>(_Fx), std::forward<Arg>(args)...),RetType() };
+            auto pFunction = &ThreadFunction<RetType, std::decay_t<_Fn>, std::decay_t<Arg>...>;
             int length = GetLength((BYTE*)pFunction);
-            auto lpFunction = _AllocMemApi(length);
-            _WriteApi((LPVOID)lpFunction, (LPVOID)pFunction, length);
-            dataContext.pFunction = (LPVOID)lpFunction;
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);
+            dataContext.pFunction = (LPVOID)lpFunction.raw();
             dataContext.OriginalEip = (LPVOID)ctx.XIP;
             using parametertype = decltype(threadData);
-            auto lpParameter = _AllocMemApi(sizeof(parametertype));
-            _WriteApi((LPVOID)lpParameter, &threadData, sizeof(parametertype));
-            dataContext.lpParameter = (PBYTE)lpParameter;
-            ctx.XIP = (UDWORD)lpShell;
-            _WriteApi((LPVOID)lpShell, &dataContext, sizeof(DATA_CONTEXT));
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);
+            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));
+            dataContext.lpParameter = (PBYTE)lpParameter.get();
+            ParamAddr = (UDWORD)lpParameter.raw();
+            _ctx=ctx;//±£¥Ê…œœ¬Œƒ
+            ctx.XIP = (UDWORD)lpShell.raw();
+            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));
             thread.SetContext(ctx);
             thread.Resume();
-            std::thread([&]() {
-                do{
-                    //sleep for 15ms
-                    std::this_thread::sleep_for(std::chrono::milliseconds(15));
-                    //suspend thread
-                    thread.Suspend();
-                    //get context
-                    auto ctx = thread.GetContext();
-                    //resume thread
-                    thread.Resume();
-                }while((UDWORD)ctx.XIP<lpShell+sizeof(ContextInjectShell));
-                //free memory
-                _FreeMemApi((LPVOID)lpShell);
-                _FreeMemApi((LPVOID)lpFunction);
-                _FreeMemApi((LPVOID)lpParameter);
-                for(auto& p:m_vecAllocMem){
-                   p.Release();
-                }
-            }).detach();
+            _thread = std::move(thread);
             return EnumStatus_Break;
         };
         EnumThread(lambda);
+         std::thread([&]() {
+                do{
+                    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+                    _thread.Suspend();
+                    _ctx = _thread.GetContext();
+                    _thread.Resume();
+                }while((UDWORD)_ctx.XIP<(UDWORD)_ctx.XIP);
+                for(auto& p:m_vecAllocMem)p.Release();
+            }).join();
+         ThreadData<RetType, std::decay_t<_Fn&&>, std::decay_t<Arg>...> _threadData{ std::tuple(std::forward<std::decay_t<_Fn&&>>(_Fx), std::forward<Arg>(args)...),RetType() };
+        using parametertype = decltype(_threadData);
+        _ReadApi((LPVOID)ParamAddr, &_threadData, sizeof(parametertype));
+       
+        retdata = _threadData.retdata;
+        return retdata;
+    }
+    template <class _Fn>
+    decltype(auto) SetContextCall(_Fn&& _Fx) {
+        using RetType=std::decay_t<decltype(_Fx())>;
+        if (!m_bAttached)return RetType();
+        RetType retdata{};
+        UDWORD paramaddr= 0;
+        ThreadData2< std::decay_t<_Fn>, RetType> threadData{ std::decay_t<_Fn>(_Fx),RetType() };
+        using parametertype = decltype(threadData);
+        CONTEXT _context{};
+        Thread _thread{};
+        UDWORD oldXIP = 0;
+        auto lambda = [&](THREADENTRY32 te32)->int {
+            auto thread = Thread(te32.th32ThreadID);
+            thread.Suspend();
+            auto ctx = thread.GetContext();
+            _context = ctx;
+            auto lpShell = make_Shared<DATA_CONTEXT>(1,m_hProcess);
+            if(!lpShell)return EnumStatus_Break;
+            m_vecAllocMem.emplace_back(lpShell);
+            DATA_CONTEXT dataContext{};
+            memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
+            auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType>;
+            int length = GetLength((BYTE*)pFunction);
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);
+            if (!lpFunction)return EnumStatus_Break;
+            m_vecAllocMem.emplace_back(lpFunction);
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);
+            dataContext.pFunction = (LPVOID)lpFunction.raw();
+            dataContext.OriginalEip = (LPVOID)ctx.XIP;
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);
+            if (!lpParameter)return EnumStatus_Break;
+            m_vecAllocMem.emplace_back(lpParameter);
+            paramaddr = (UDWORD)lpParameter.raw();
+            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));
+            dataContext.lpParameter = (PBYTE)lpParameter.get();
+            oldXIP = ctx.XIP;
+            ctx.XIP = (UDWORD)lpShell.raw();
+            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));
+            thread.SetContext(ctx);
+            thread.Resume();
+            _thread = std::move(thread);
+            return EnumStatus_Break;
+        };
+        EnumThread(lambda);
+        std::thread([&]() {
+            CONTEXT _ctx = { 0 };
+            do {
+                std::this_thread::sleep_for(std::chrono::milliseconds(15));
+                _thread.Suspend();
+                _ctx = _thread.GetContext();
+                _thread.Resume();
+            } while ((UDWORD)_ctx.XIP < oldXIP);
+            for (auto& p : m_vecAllocMem) {
+                p.Release();
+            }
+        }).join();
+        _ReadApi((LPVOID)paramaddr, &threadData, sizeof(parametertype));
+        retdata = threadData.retdata;
+        return retdata;
     }
 private:
+
     DWORD GetProcessIdByName(const char* processName) {//get process id by name
         DWORD pid = 0;
         auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -287,131 +476,46 @@ private:
 };
 
 
-class Thread {
-    HANDLE m_hThread = INVALID_HANDLE_VALUE;
-    DWORD m_dwThreadId = 0;
-    bool m_bAttached = false;
-public:
-    Thread() = default;
-    //ÊâìÂºÄÁ∫øÁ®ã
-    Thread(DWORD dwThreadId) {
-        m_dwThreadId = dwThreadId;
-        m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
-        m_bAttached = true;
-    }
-    //ÂÖ≥Èó≠Á∫øÁ®ãÂè•ÊüÑ
-    ~Thread() {
-        if (m_bAttached)CloseHandle(m_hThread);
-    }
-    //Ëé∑ÂèñÁ∫øÁ®ãÂè•ÊüÑ
-    HANDLE GetHandle() {
-        return m_hThread;
-    }
-    bool IsRunning() {
-        //Ëé∑ÂèñÁ∫øÁ®ãÈÄÄÂá∫‰ª£Á†Å
-        DWORD dwExitCode = 0;
-        if (GetExitCodeThread(m_hThread, &dwExitCode)) {
-            if (dwExitCode == STILL_ACTIVE) {
-                return true;
-            }
-        }
-        return false;
-    }
-    //Ëé∑Âèñ‰∏ä‰∏ãÊñá
-    CONTEXT GetContext() {
-        CONTEXT context = { 0 };
-        context.ContextFlags = CONTEXT_FULL;
-        GetThreadContext(m_hThread, &context);
-        return context;
-    }
-    //ËÆæÁΩÆ‰∏ä‰∏ãÊñá
-    void SetContext(CONTEXT& context) {
-        SetThreadContext(m_hThread, &context);
-    }
-    //ÊöÇÂÅú
-    void Suspend() {
-        SuspendThread(m_hThread);
-    }
-    //ÊÅ¢Â§ç
-    void Resume() {
-        ResumeThread(m_hThread);
-    }
-};
-class Shared_Ptr {
-    LPVOID BaseAddress = nullptr;
-    int refCount = 0;
-    void AddRef() {
-        refCount++;
-    }
-public:
-    Shared_Ptr(void* Addr) {
-        BaseAddress = Addr;
-        AddRef();
-    }
-    template<class T>
-    Shared_Ptr() {
-        AddRef();
-        BaseAddress = (LPVOID)Process::GetInstance()._AllocMemApi(sizeof(T));
-    }
-    Shared_Ptr(size_t nsize) {
-        AddRef();
-        BaseAddress = (LPVOID)Process::GetInstance()._AllocMemApi(nsize);
-    }
-    Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount) {
-        AddRef();
-    }
-    Shared_Ptr& operator=(const Shared_Ptr& other) {//copy assignment
-        if (this != &other) {
-            Release();
-            BaseAddress = other.BaseAddress;
-            refCount = other.refCount;
-            AddRef();
-        }
-        return *this;
-    }
-    LPVOID get() {
-        AddRef();
-        return BaseAddress;
-    }
-    LPVOID raw() {
-        return BaseAddress;
-    }
-    UDWORD getUDWORD() {
-        AddRef();
-        return (UDWORD)BaseAddress;
-    }
-    ~Shared_Ptr() {
-        Release();
-    }
-    void Release() {//release and refCount--
-        refCount--;
-        if (BaseAddress && refCount <= 0) Process::GetInstance()._FreeMemApi(BaseAddress);
-    }
-    operator bool() { return BaseAddress != nullptr; }
-};
-void Process::processparameter(const char*& arg) {//process parameter
+
+
+void Process::preprocessparameter(const char*& arg) {//process parameter
     auto nlen = (int)strlen(arg) + 1;
-    auto p = make_Shared<char>(nlen * sizeof(char));
+    auto p = make_Shared<char>(nlen * sizeof(char), m_hProcess);
     if (p) {
         m_vecAllocMem.push_back(p);
         _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
         arg = (const char*)p.raw();
     }
 }
-void Process::processparameter(const wchar_t*& arg) {//process parameter
+void Process::preprocessparameter(const wchar_t*& arg) {//process parameter
     auto nlen = (int)wcslen(arg) + 1;
-    auto p = make_Shared<wchar_t>(nlen * sizeof(wchar_t));
+    auto p = make_Shared<wchar_t>(nlen * sizeof(wchar_t), m_hProcess);
     if (p) {
         m_vecAllocMem.push_back(p);
         _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(wchar_t));
         arg = (const wchar_t*)p.raw();
     }
 }
+template<typename T>
+void Process::preprocessparameter(const T*& arg){
+    if constexpr (std::is_pointer_v<arg>) {
+        auto p = make_Shared<BYTE>(0x1000, m_hProcess);
+        if (p) {
+            m_vecAllocMem.push_back(p);
+            arg = (T*)p;
+        }
+    }
+}
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-    Process.SetContextCall(MessageBoxA, nullptr, "Hello World", "Caption", 0);//call MessageBoxA
+    HWND a = NULL;
+    const char* b = "hello";
+    const char* c = "world";
+    int d=MB_OKCANCEL;
+    auto ret=Process.SetContextCall(MessageBoxA, a, b, c, d);
+    std::cout <<std::hex<< ret << std::endl;
     return 0;
 }
 
