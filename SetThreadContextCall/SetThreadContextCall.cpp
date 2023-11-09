@@ -218,9 +218,7 @@ public:
         if (m_bAttached)CloseHandle(m_hThread);
     }
     //获取线程句柄
-    HANDLE GetHandle() {
-        return m_hThread;
-    }
+    HANDLE GetHandle() {return m_hThread;}
     bool IsRunning() {
         //获取线程退出代码
         DWORD dwExitCode = 0;
@@ -251,6 +249,10 @@ public:
         ResumeThread(m_hThread);
     }
 };  //forward declaration
+template<typename T>
+T gettype(const T& arg) {
+    return decltype(arg);
+}
 class Process :public SingleTon<Process> {//Singleton
     HANDLE m_hProcess = INVALID_HANDLE_VALUE;
     DWORD m_pid;//process id
@@ -258,18 +260,12 @@ class Process :public SingleTon<Process> {//Singleton
     std::vector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory
     template<typename T, typename ...Args>
     void preprocess(T& arg, Args&...args) {//partially specialized template
-        preprocessparameter(arg);
-        if constexpr (sizeof...(args) > 0) preprocess(args...);
+        if constexpr (std::is_same_v<T, const char*>|| std::is_same_v<T, const wchar_t*>) preprocessparameter(arg);
+        if constexpr(sizeof...(args)>0)preprocess(args...);
     }
     template<typename T>void preprocessparameter(T& arg) {}
     void preprocessparameter(const char*& arg);//process const char* parameter
     void preprocessparameter(const wchar_t*& arg);//process const wchar_t* parameter
-    template<typename T>
-    void preprocessparameter(const T*& arg);//process const wchar_t* parameter
-    template<typename T,typename...Args>
-    void postprocess(T& arg, Args&...args) {
-
-    }
 public:
     void Attach(const char* _szProcessName) {//attach process
         //get process id
@@ -496,25 +492,13 @@ void Process::preprocessparameter(const wchar_t*& arg) {//process parameter
         arg = (const wchar_t*)p.raw();
     }
 }
-template<typename T>
-void Process::preprocessparameter(const T*& arg){
-    if constexpr (std::is_pointer_v<arg>) {
-        auto p = make_Shared<BYTE>(0x1000, m_hProcess);
-        if (p) {
-            m_vecAllocMem.push_back(p);
-            arg = (T*)p;
-        }
-    }
-}
+
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-    HWND a = NULL;
-    const char* b = "hello";
-    const char* c = "world";
-    int d=MB_OKCANCEL;
-    auto ret=Process.SetContextCall(MessageBoxA, a, b, c, d);
+
+    auto ret=Process.SetContextCall(MessageBoxA, nullptr,"Caption","text",MB_OK);
     std::cout <<std::hex<< ret << std::endl;
     return 0;
 }
