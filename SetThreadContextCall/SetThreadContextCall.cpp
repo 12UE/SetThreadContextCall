@@ -320,17 +320,8 @@ public:
             }
         }
     }
-    template<typename T>
-    std::size_t GetParamSize(const T& arg) {//only support tuple
-        return sizeof(arg);
-    }
-
-    template<typename T, typename... Args>
-    std::size_t GetParamSize(const T& arg, const Args&... args) {
-        return sizeof(arg) + GetParamSize(args...);
-    }
     template<class _Fn, class ...Arg>
-    decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg ...args){
+    decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg&& ...args){
         using RetType = decltype(_Fx(args...));
         if(!m_bAttached)return RetType();
         RetType retdata{};
@@ -379,7 +370,7 @@ public:
         return retdata;
     }
     template <class _Fn>
-    decltype(auto) SetContextCall(_Fn&& _Fx) {
+    decltype(auto) SetContextCallImpl(_Fn&& _Fx) {
         using RetType=std::decay_t<decltype(_Fx())>;
         if (!m_bAttached)return RetType();
         RetType retdata{};
@@ -433,6 +424,10 @@ public:
         retdata = threadData.retdata;
         return retdata;
     }
+    template<class _Fn, class ...Arg>
+    decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
+        return SetContextCallImpl(_Fx, args...);
+    }
 private:
 
     DWORD GetProcessIdByName(const char* processName) {//get process id by name
@@ -482,8 +477,8 @@ int main()
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
 
-    auto ret=Process.SetContextCall(MessageBoxA, nullptr,"Caption","text",MB_OK);
-    std::cout <<std::hex<< ret << std::endl;
+    auto ret=Process.SetContextCall(GetCurrentProcessId);
+    std::cout << ret << std::endl;
     return 0;
 }
 
