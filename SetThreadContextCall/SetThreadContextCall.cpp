@@ -241,11 +241,7 @@ public:
     void Resume() {
         ResumeThread(m_hThread);
     }
-};  //forward declaration
-template<typename T>
-T gettype(const T& arg) {
-    return decltype(arg);
-}
+};
 class Process :public SingleTon<Process> {//Singleton
     HANDLE m_hProcess = INVALID_HANDLE_VALUE;
     DWORD m_pid;//process id
@@ -412,7 +408,7 @@ public:
             _thread = std::move(thread);
             return EnumStatus_Break;
         });
-        CONTEXT _ctx = { 0 };
+        CONTEXT _ctx{};
         do {
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
             _thread.Suspend();
@@ -429,7 +425,6 @@ public:
         return SetContextCallImpl(_Fx, args...);
     }
 private:
-
     DWORD GetProcessIdByName(const char* processName) {//get process id by name
         DWORD pid = 0;
         auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -449,10 +444,6 @@ private:
         return pid;
     }
 };
-
-
-
-
 void Process::preprocessparameter(const char*& arg) {//process parameter
     auto nlen = (int)strlen(arg) + 1;
     auto p = make_Shared<char>(nlen * sizeof(char), m_hProcess);
@@ -471,7 +462,6 @@ void Process::preprocessparameter(const wchar_t*& arg) {//process parameter
         arg = (const wchar_t*)p.raw();
     }
 }
-
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
