@@ -11,6 +11,9 @@
 #include <thread>
 #include <functional>
 #include <array>
+#include<thread>
+#include <future>
+#include <chrono>
 #if defined _WIN64
 using UDWORD = DWORD64;
 #define XIP Rip//instruction pointer
@@ -320,7 +323,6 @@ public:
     decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg&& ...args){
         using RetType = decltype(_Fx(args...));
         if(!m_bAttached)return RetType();
-        RetType retdata{};
         Thread _thread{};
         CONTEXT _ctx{};
         UDWORD ParamAddr = 0;
@@ -358,12 +360,13 @@ public:
             _ctx = _thread.GetContext();
             _thread.Resume();
         }while((UDWORD)_ctx.XIP<=(UDWORD)_ctx.XIP);
-        for(auto& p:m_vecAllocMem)p.Release();
+        
         ThreadData<RetType, std::decay_t<_Fn&&>, std::decay_t<Arg>...> _threadData{ std::tuple(std::forward<std::decay_t<_Fn&&>>(_Fx), std::forward<Arg>(args)...),RetType() };
         using parametertype = decltype(_threadData);
         _ReadApi((LPVOID)ParamAddr, &_threadData, sizeof(parametertype));
-        retdata = _threadData.retdata;
-        return retdata;
+        for (auto& p : m_vecAllocMem) p.Release();
+        return _threadData.retdata;
+        
     }
     template <class _Fn>
     decltype(auto) SetContextCallImpl(_Fn&& _Fx) {
@@ -399,7 +402,7 @@ public:
             m_vecAllocMem.emplace_back(lpParameter);
             paramaddr = (UDWORD)lpParameter.raw();
             _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));
-            dataContext.lpParameter = (PBYTE)lpParameter.get();
+            dataContext.lpParameter = (PBYTE)lpParameter.raw();
             oldXIP = ctx.XIP;
             ctx.XIP = (UDWORD)lpShell.raw();
             _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));
@@ -408,17 +411,17 @@ public:
             _thread = std::move(thread);
             return EnumStatus_Break;
         });
-        CONTEXT _ctx{};
-        do {
+       volatile CONTEXT _ctx{};
+       do {
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
             _thread.Suspend();
-            _ctx = _thread.GetContext();
+           auto _ctx2 = _thread.GetContext();
+           memcpy((void*)&_ctx, &_ctx2, sizeof(_ctx2));
             _thread.Resume();
         } while ((UDWORD)_ctx.XIP <= oldXIP);
-        for (auto& p : m_vecAllocMem)p.Release();
         _ReadApi((LPVOID)paramaddr, &threadData, sizeof(parametertype));
-        retdata = threadData.retdata;
-        return retdata;
+        for (auto& p : m_vecAllocMem) p.Release();
+        return threadData.retdata;
     }
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
