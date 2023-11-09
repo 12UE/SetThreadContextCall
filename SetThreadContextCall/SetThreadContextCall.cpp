@@ -360,13 +360,11 @@ public:
             _ctx = _thread.GetContext();
             _thread.Resume();
         }while((UDWORD)_ctx.XIP<=(UDWORD)_ctx.XIP);
-        
         ThreadData<RetType, std::decay_t<_Fn&&>, std::decay_t<Arg>...> _threadData{ std::tuple(std::forward<std::decay_t<_Fn&&>>(_Fx), std::forward<Arg>(args)...),RetType() };
         using parametertype = decltype(_threadData);
         _ReadApi((LPVOID)ParamAddr, &_threadData, sizeof(parametertype));
         for (auto& p : m_vecAllocMem) p.Release();
         return _threadData.retdata;
-        
     }
     template <class _Fn>
     decltype(auto) SetContextCallImpl(_Fn&& _Fx) {
