@@ -49,15 +49,13 @@ template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * 
     if constexpr (!std::is_same_v<remove_const_pointer_t<Tx>, wchar_t>) {
         strtemp = str1;
         wstr1 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring
-    }
-    else {
+    }else {
         wstr1 = str1;
     }
     if constexpr (!std::is_same_v<remove_const_pointer_t<Ty>, wchar_t>) {
         strtemp = str2;
         wstr2 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring
-    }
-    else {
+    }else {
         wstr2 = str2;
     }
     std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower
@@ -93,12 +91,10 @@ class ThreadData {
 public:
     std::tuple<Args...> datas;
     T retdata{};
-
     template <std::size_t... Indices>
     auto GetParamHelper(const std::tuple<Args...>& tpl, std::index_sequence<Indices...>) {
         return std::make_tuple(std::get<Indices>(tpl)...);
     }
-
     auto GetParam() {
         return GetParamHelper(datas, std::index_sequence_for<Args...>{});
     }
@@ -109,14 +105,12 @@ struct ThreadData2 {//Thread Data Struct
     T retdata{};
 };
 #pragma pack(pop)
-
 template <class T, class... Args, size_t... Indices>
 decltype(auto) ThreadFunctionImpl(ThreadData<T, Args...>* threadData, std::index_sequence<Indices...>) noexcept {
     T retdata = std::get<0>(threadData->datas)(std::get<Indices+1>(threadData->datas)...);
     threadData->retdata = retdata;
     return retdata;
 }
-
 template <class T, class... Args>
 decltype(auto) ThreadFunction(void* param) noexcept {
     auto threadData = static_cast<ThreadData<T, Args...>*>(param);
@@ -128,7 +122,6 @@ T ThreadFunction2(void* param) noexcept {
     threadData->retdata = threadData->fn();
     return threadData->retdata;
 }
-
 typedef class DATA_CONTEXT {
 public:
     BYTE ShellCode[0x30];				//x64:0X00   |->x86:0x00
@@ -344,15 +337,15 @@ public:
         Thread _thread{};
         CONTEXT _ctx{};
         UDWORD ParamAddr = 0;
-        auto lambda=[&](THREADENTRY32 te32)->int{
+        EnumThread([&](const THREADENTRY32& te32)->int {
             auto thread = Thread(te32.th32ThreadID);
             thread.Suspend();
             auto ctx = thread.GetContext();
-            auto lpShell=make_Shared<DATA_CONTEXT>(1,m_hProcess);
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-            if constexpr(sizeof...(args)>0) preprocess(args...);
-            ThreadData<RetType,std::decay_t<_Fn>, std::decay_t<Arg>...> threadData{ std::tuple(std::forward<std::decay_t<_Fn>>(_Fx), std::forward<Arg>(args)...),RetType() };
+            if constexpr (sizeof...(args) > 0) preprocess(args...);
+            ThreadData<RetType, std::decay_t<_Fn>, std::decay_t<Arg>...> threadData{ std::tuple(std::forward<std::decay_t<_Fn>>(_Fx), std::forward<Arg>(args)...),RetType() };
             auto pFunction = &ThreadFunction<RetType, std::decay_t<_Fn>, std::decay_t<Arg>...>;
             int length = GetLength((BYTE*)pFunction);
             auto lpFunction = make_Shared<BYTE>(length, m_hProcess);
@@ -364,28 +357,24 @@ public:
             _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));
             dataContext.lpParameter = (PBYTE)lpParameter.get();
             ParamAddr = (UDWORD)lpParameter.raw();
-            _ctx=ctx;//保存上下文
+            _ctx = ctx;
             ctx.XIP = (UDWORD)lpShell.raw();
             _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));
             thread.SetContext(ctx);
             thread.Resume();
             _thread = std::move(thread);
             return EnumStatus_Break;
-        };
-        EnumThread(lambda);
-         std::thread([&]() {
-                do{
-                    std::this_thread::sleep_for(std::chrono::milliseconds(15));
-                    _thread.Suspend();
-                    _ctx = _thread.GetContext();
-                    _thread.Resume();
-                }while((UDWORD)_ctx.XIP<(UDWORD)_ctx.XIP);
-                for(auto& p:m_vecAllocMem)p.Release();
-            }).join();
-         ThreadData<RetType, std::decay_t<_Fn&&>, std::decay_t<Arg>...> _threadData{ std::tuple(std::forward<std::decay_t<_Fn&&>>(_Fx), std::forward<Arg>(args)...),RetType() };
+        });
+        do{
+            std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            _thread.Suspend();
+            _ctx = _thread.GetContext();
+            _thread.Resume();
+        }while((UDWORD)_ctx.XIP<=(UDWORD)_ctx.XIP);
+        for(auto& p:m_vecAllocMem)p.Release();
+        ThreadData<RetType, std::decay_t<_Fn&&>, std::decay_t<Arg>...> _threadData{ std::tuple(std::forward<std::decay_t<_Fn&&>>(_Fx), std::forward<Arg>(args)...),RetType() };
         using parametertype = decltype(_threadData);
         _ReadApi((LPVOID)ParamAddr, &_threadData, sizeof(parametertype));
-       
         retdata = _threadData.retdata;
         return retdata;
     }
@@ -400,13 +389,13 @@ public:
         CONTEXT _context{};
         Thread _thread{};
         UDWORD oldXIP = 0;
-        auto lambda = [&](THREADENTRY32 te32)->int {
+        EnumThread([&](THREADENTRY32 te32)->int {
             auto thread = Thread(te32.th32ThreadID);
             thread.Suspend();
             auto ctx = thread.GetContext();
             _context = ctx;
-            auto lpShell = make_Shared<DATA_CONTEXT>(1,m_hProcess);
-            if(!lpShell)return EnumStatus_Break;
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);
+            if (!lpShell)return EnumStatus_Break;
             m_vecAllocMem.emplace_back(lpShell);
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
@@ -431,20 +420,15 @@ public:
             thread.Resume();
             _thread = std::move(thread);
             return EnumStatus_Break;
-        };
-        EnumThread(lambda);
-        std::thread([&]() {
-            CONTEXT _ctx = { 0 };
-            do {
-                std::this_thread::sleep_for(std::chrono::milliseconds(15));
-                _thread.Suspend();
-                _ctx = _thread.GetContext();
-                _thread.Resume();
-            } while ((UDWORD)_ctx.XIP < oldXIP);
-            for (auto& p : m_vecAllocMem) {
-                p.Release();
-            }
-        }).join();
+        });
+        CONTEXT _ctx = { 0 };
+        do {
+            std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            _thread.Suspend();
+            _ctx = _thread.GetContext();
+            _thread.Resume();
+        } while ((UDWORD)_ctx.XIP <= oldXIP);
+        for (auto& p : m_vecAllocMem)p.Release();
         _ReadApi((LPVOID)paramaddr, &threadData, sizeof(parametertype));
         retdata = threadData.retdata;
         return retdata;
