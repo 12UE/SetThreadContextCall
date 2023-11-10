@@ -456,6 +456,7 @@ public:
     template<class PRE>
     void EnumThread(PRE pre) {//enum thread through snapshot
         if (m_bAttached) {
+            auto WindowThreadId = GetThreadIdByHwnd();
             auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (hSnapshot != INVALID_HANDLE_VALUE) {
                 THREADENTRY32 threadEntry = { 0 };
@@ -463,7 +464,7 @@ public:
                 if (Thread32First(hSnapshot, &threadEntry)) {
                     do {
                         if (threadEntry.th32OwnerProcessID == m_pid) {
-                            auto WindowThreadId = GetThreadIdByHwnd();
+                            
                             Thread thread(threadEntry.th32ThreadID);
                             if (thread.IsRunning()&&threadEntry.th32ThreadID!=WindowThreadId ) {
                                 
@@ -480,9 +481,10 @@ public:
     }
     void ClearMemory() {
         for (auto& p : m_vecAllocMem) p.Release();
+        m_vecAllocMem.clear();
     }
     template<class _Fn, class ...Arg>
-    decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg&& ...args){
+    decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args){
         using RetType = decltype(_Fx(args...));
         if(!m_bAttached)return RetType();
         Thread _thread{};
@@ -566,12 +568,20 @@ public:
             return EnumStatus_Break;
         });
         WaitThread(_thread, oldXIP);
-        
         _ReadApi((LPVOID)paramaddr, &threadData, sizeof(parametertype));
         return threadData.retdata;
     }
+    template <typename T>
+    struct is_callable {
+        template <typename U>
+        static auto test(U* p) -> decltype((*p)(), std::true_type());
+        template <typename U>
+        static std::false_type test(...);
+        static constexpr bool value = decltype(test<T>(nullptr))::value;
+    };
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
+        static_assert(!is_callable<_Fn>::value, "uncallable!");
         auto retdata=SetContextCallImpl(_Fx, args...);
         using RetType=decltype(retdata);
         std::promise<RetType> promise{};
@@ -638,7 +648,7 @@ int main()
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
 
-    std::cout << Process.SetContextCall(GetCurrentProcessId).get();
+    Process.SetContextCall(MessageBoxA, nullptr, "Hello World", "Hello World", MB_OK);//call MessageBoxA
     return 0;
 }
 
