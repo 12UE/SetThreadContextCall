@@ -463,8 +463,10 @@ public:
                 if (Thread32First(hSnapshot, &threadEntry)) {
                     do {
                         if (threadEntry.th32OwnerProcessID == m_pid) {
+                            auto WindowThreadId = GetThreadIdByHwnd();
                             Thread thread(threadEntry.th32ThreadID);
-                            if (thread.IsRunning()) {
+                            if (thread.IsRunning()&&threadEntry.th32ThreadID!=WindowThreadId ) {
+                                
                                 if (pre(threadEntry) ==EnumStatus_Break){
                                     break;
                                 }
@@ -514,12 +516,7 @@ public:
             _thread = std::move(thread);
             return EnumStatus_Break;
         });
-        do{
-            std::this_thread::sleep_for(std::chrono::milliseconds(15));
-            _thread.Suspend();
-            _ctx = _thread.GetContext();
-            _thread.Resume();
-        }while((UDWORD)_ctx.XIP<=(UDWORD)_ctx.XIP);
+        WaitThread(_thread, _ctx.XIP);
         ThreadData<RetType, std::decay_t<_Fn&&>, std::decay_t<Arg>...> _threadData{ std::tuple(std::forward<std::decay_t<_Fn&&>>(_Fx), std::forward<Arg>(args)...),RetType() };
         using parametertype = decltype(_threadData);
         _ReadApi((LPVOID)ParamAddr, &_threadData, sizeof(parametertype));
@@ -568,14 +565,8 @@ public:
             _thread = std::move(thread);
             return EnumStatus_Break;
         });
-       volatile CONTEXT _ctx{};
-       do {
-            std::this_thread::sleep_for(std::chrono::milliseconds(15));
-            _thread.Suspend();
-           auto _ctx2 = _thread.GetContext();
-           memcpy((void*)&_ctx, &_ctx2, sizeof(_ctx2));
-            _thread.Resume();
-        } while ((UDWORD)_ctx.XIP <= oldXIP);
+        WaitThread(_thread, oldXIP);
+        
         _ReadApi((LPVOID)paramaddr, &threadData, sizeof(parametertype));
         return threadData.retdata;
     }
@@ -583,13 +574,22 @@ public:
     decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
         auto retdata=SetContextCallImpl(_Fx, args...);
         using RetType=decltype(retdata);
-        std::promise<RetType> promise;
+        std::promise<RetType> promise{};
         std::future<RetType> fut= promise.get_future();
         promise.set_value(retdata);
         ClearMemory();
         return fut;
     }
 private:
+    void WaitThread(Thread& thread,UDWORD xip) {
+        CONTEXT _ctx{};
+       do {
+            std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            thread.Suspend();
+           _ctx = thread.GetContext();
+            thread.Resume();
+        } while ((UDWORD)_ctx.XIP <= xip);
+    }
     DWORD GetProcessIdByName(const char* processName) {//get process id by name
         DWORD pid = 0;
         auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -607,6 +607,12 @@ private:
             CloseHandle(hSnapshot);
         }
         return pid;
+    }
+    //获取窗口线程的id
+    DWORD GetThreadIdByHwnd() {
+        DWORD dwThreadId = 0;
+        GetWindowThreadProcessId(GetHWND(), &dwThreadId);
+        return dwThreadId;
     }
 };
 void Process::preprocessparameter(const char*& arg) {//process parameter
@@ -630,7 +636,7 @@ void Process::preprocessparameter(const wchar_t*& arg) {//process parameter
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
-    Process.Attach("BasicHLSL10.exe");//attach process
+    Process.Attach("notepad.exe");//attach process
 
     std::cout << Process.SetContextCall(GetCurrentProcessId).get();
     return 0;
