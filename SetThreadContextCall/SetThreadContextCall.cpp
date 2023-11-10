@@ -581,7 +581,7 @@ public:
     };
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
-        static_assert(!is_callable<_Fn>::value, "Uncallable Object!");
+        static_assert(!is_callable<_Fn>::value, "uncallable!");
         auto retdata=SetContextCallImpl(_Fx, args...);
         using RetType=decltype(retdata);
         std::promise<RetType> promise{};
@@ -592,13 +592,11 @@ public:
     }
 private:
     void WaitThread(Thread& thread,UDWORD xip) {
-        CONTEXT _ctx{};
+       CONTEXT _ctx{};
        do {
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
-            thread.Suspend();
            _ctx = thread.GetContext();
-            thread.Resume();
-        } while ((UDWORD)_ctx.XIP <= xip);
+       } while ((UDWORD)_ctx.XIP <= xip);
     }
     DWORD GetProcessIdByName(const char* processName) {//get process id by name
         DWORD pid = 0;
@@ -648,7 +646,7 @@ int main()
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
 
-    Process.SetContextCall(MessageBoxA, nullptr, "Hello World", "Hello World", MB_OK);//call MessageBoxA
+    std::cout << Process.SetContextCall(GetCurrentProcessId).get();
     return 0;
 }
 
