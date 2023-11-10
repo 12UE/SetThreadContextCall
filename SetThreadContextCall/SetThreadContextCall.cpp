@@ -14,6 +14,7 @@
 #include<thread>
 #include <future>
 #include <chrono>
+#include <mutex>
 #if defined _WIN64
 using UDWORD = DWORD64;
 #define XIP Rip//instruction pointer
@@ -170,6 +171,18 @@ inline BYTE ContextInjectShell[] = {	//x86.asm
     0xc3								//retn
 };
 #endif
+HWND g_hwnd;  // 用于存储符合条件的窗口句柄
+
+BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
+    DWORD processId;
+    GetWindowThreadProcessId(hwnd, &processId);  // 获取窗口所属进程的ID
+    if (processId == static_cast<DWORD>(lParam)) {
+        g_hwnd=hwnd;  // 将符合条件的窗口句柄存储起来
+        return false;
+    }
+    return TRUE;
+}
+
 class Thread {
     HANDLE m_hThread = INVALID_HANDLE_VALUE;
     DWORD m_dwThreadId = 0;
@@ -244,12 +257,151 @@ public:
     void Resume() {
         ResumeThread(m_hThread);
     }
+    //PostThreadMessage
+    BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) {
+        return ::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
+    }
 };
+template <typename T>
+class ThreadSafeVector {
+    std::mutex m_mutex;
+    std::vector<T> m_vector;
+public:
+    //聚合初始化
+    ThreadSafeVector(std::initializer_list<T> list) :m_vector(list) {}
+    ThreadSafeVector() = default;
+    ThreadSafeVector(const ThreadSafeVector& other) {
+        m_vector = other.m_vector;
+    }
+    ThreadSafeVector(size_t size) {
+        m_vector.resize(size);
+    }
+    ThreadSafeVector& operator=(const ThreadSafeVector& other) {
+        m_vector = other.m_vector;
+        return *this;
+    }
+    ThreadSafeVector(ThreadSafeVector&& other) {
+        m_vector = std::move(other.m_vector);
+    }
+    ThreadSafeVector& operator=(ThreadSafeVector&& other) {
+        m_vector = std::move(other.m_vector);
+        return *this;
+    }
+    ~ThreadSafeVector() = default;
+    void push_back(const T& value) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.push_back(value);
+    }
+    void push_back(T&& value) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.push_back(std::move(value));
+    }
+    //emplace back
+    template<class... Args>
+    void emplace_back(Args&&... args) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.emplace_back(std::forward<Args>(args)...);
+    }
+    void pop_back() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.pop_back();
+    }
+    void clear() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.clear();
+    }
+    //data
+    decltype(auto) data() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_vector.data();
+    }
+    T& operator[](size_t index) {
+        return m_vector[index];
+    }
+    const T& operator[](size_t index) const {
+        return m_vector[index];
+    }
+    size_t size() const {
+        return m_vector.size();
+    }
+    void reserve(size_t size) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.reserve(size);
+    }
+    //resize
+    void resize(size_t size) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.resize(size);
+    }
+    void assign(size_t size, const T& value) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.assign(size, value);
+    }
+    void assign(std::initializer_list<T> list) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.assign(list);
+    }
+    //迭代器assign
+    template<class InputIt>
+    void assign(InputIt first, InputIt last) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.assign(first, last);
+    }
+    bool empty() const
+    {
+        return m_vector.empty();
+    }
+    void safe_erase(typename std::vector<T>::iterator it) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_vector.erase(it);
+    }
+    //不安全的删除
+    void erase(typename std::vector<T>::iterator it) {
+        m_vector.erase(it);
+    }
+    //unsafe
+    decltype(auto)  begin()const {
+        return m_vector.begin();
+    }
+    decltype(auto)  begin() {
+        return m_vector.begin();
+    }
+    decltype(auto) end()const {
+        return m_vector.end();
+    }
+    decltype(auto)  end() {
+        return m_vector.end();
+    }
+    //crbegin
+    decltype(auto) crbegin() {
+        return m_vector.crbegin();
+    }
+    decltype(auto) crend() {
+        return m_vector.crend();
+    }
+    void unsafe_erase(typename std::vector<T>::iterator it) {
+        m_vector.erase(it);
+    }
+    decltype(auto) cbegin() const {
+        return m_vector.begin();
+    }
+    decltype(auto) cend() const {
+        return m_vector.end();
+    }
+};
+template<class T>
+inline ThreadSafeVector<T> operator+(const ThreadSafeVector<T>& lhs, const ThreadSafeVector<T>& rhs) {
+    ThreadSafeVector<T> result;
+    result.reserve(lhs.size() + rhs.size());
+    for (size_t i = 0; i < lhs.size(); i++)result.push_back(lhs[i]);
+    for (size_t i = 0; i < rhs.size(); i++)result.push_back(rhs[i]);
+    return result;
+}
 class Process :public SingleTon<Process> {//Singleton
     HANDLE m_hProcess = INVALID_HANDLE_VALUE;
     DWORD m_pid;//process id
     std::atomic_bool m_bAttached;//atomic bool
-    std::vector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory
+    ThreadSafeVector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory
     template<typename T, typename ...Args>
     void preprocess(T& arg, Args&...args) {//partially specialized template
         if constexpr (std::is_same_v<T, const char*>|| std::is_same_v<T, const wchar_t*>) preprocessparameter(arg);
@@ -296,6 +448,11 @@ public:
         if (m_bAttached)return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
         return 0;
     }
+    //get HWND
+    HWND GetHWND() {
+        EnumWindows(EnumWindowsProc, m_pid);
+        return g_hwnd;
+    }
     template<class PRE>
     void EnumThread(PRE pre) {//enum thread through snapshot
         if (m_bAttached) {
@@ -318,6 +475,9 @@ public:
                 CloseHandle(hSnapshot);
             }
         }
+    }
+    void ClearMemory() {
+        for (auto& p : m_vecAllocMem) p.Release();
     }
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg&& ...args){
@@ -363,14 +523,13 @@ public:
         ThreadData<RetType, std::decay_t<_Fn&&>, std::decay_t<Arg>...> _threadData{ std::tuple(std::forward<std::decay_t<_Fn&&>>(_Fx), std::forward<Arg>(args)...),RetType() };
         using parametertype = decltype(_threadData);
         _ReadApi((LPVOID)ParamAddr, &_threadData, sizeof(parametertype));
-        for (auto& p : m_vecAllocMem) p.Release();
+        _thread._PostThreadMessage(WM_MOUSEMOVE, 0, 0);
         return _threadData.retdata;
     }
     template <class _Fn>
     decltype(auto) SetContextCallImpl(_Fn&& _Fx) {
         using RetType=std::decay_t<decltype(_Fx())>;
         if (!m_bAttached)return RetType();
-        RetType retdata{};
         UDWORD paramaddr= 0;
         ThreadData2< std::decay_t<_Fn>, RetType> threadData{ std::decay_t<_Fn>(_Fx),RetType() };
         using parametertype = decltype(threadData);
@@ -418,12 +577,17 @@ public:
             _thread.Resume();
         } while ((UDWORD)_ctx.XIP <= oldXIP);
         _ReadApi((LPVOID)paramaddr, &threadData, sizeof(parametertype));
-        for (auto& p : m_vecAllocMem) p.Release();
         return threadData.retdata;
     }
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
-        return SetContextCallImpl(_Fx, args...);
+        auto retdata=SetContextCallImpl(_Fx, args...);
+        using RetType=decltype(retdata);
+        std::promise<RetType> promise;
+        std::future<RetType> fut= promise.get_future();
+        promise.set_value(retdata);
+        ClearMemory();
+        return fut;
     }
 private:
     DWORD GetProcessIdByName(const char* processName) {//get process id by name
@@ -466,10 +630,9 @@ void Process::preprocessparameter(const wchar_t*& arg) {//process parameter
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
-    Process.Attach("notepad.exe");//attach process
+    Process.Attach("BasicHLSL10.exe");//attach process
 
-    auto ret=Process.SetContextCall(GetCurrentProcessId);
-    std::cout << ret << std::endl;
+    std::cout << Process.SetContextCall(GetCurrentProcessId).get();
     return 0;
 }
 
