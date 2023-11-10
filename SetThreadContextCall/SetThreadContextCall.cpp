@@ -581,7 +581,7 @@ public:
     };
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
-        static_assert(!is_callable<_Fn>::value, "uncallable!");
+        static_assert(!is_callable<_Fn>::value, "Uncallable Object!");
         auto retdata=SetContextCallImpl(_Fx, args...);
         using RetType=decltype(retdata);
         std::promise<RetType> promise{};
