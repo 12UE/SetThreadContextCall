@@ -523,6 +523,7 @@ public:
             _thread = std::move(thread);
             return EnumStatus_Break;
         });
+        WaitThread(_thread, _ctx.XIP);
         ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));
         return threadData.retdata;
@@ -565,6 +566,7 @@ public:
             _thread = std::move(thread);
             return EnumStatus_Break;
         });
+        WaitThread(_thread, _ctx.XIP);
         ThreadData<std::decay_t<_Fn>, RetType> threadData;
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));
         return threadData.retdata;
