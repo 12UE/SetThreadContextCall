@@ -103,23 +103,23 @@ public:
     std::size_t TupleSize(){
         return sizeof...(Args);
     }
-    //获取参数所占空间大小所以类型的大小之和
     int GetParamsSize() {
         return (sizeof(Args) + ...);
     }
 };
 #pragma pack(pop)
-template <class Fn,class T, class... Args, size_t... Indices>
-decltype(auto) ThreadFunctionImpl(ThreadData2<Fn,T, Args...>* threadData, std::index_sequence<Indices...>) noexcept {
-    T retdata = threadData->fn(std::get<Indices>(threadData->params)...);
-    threadData->retdata = retdata;
-    return retdata;
-}
+
 template <class Fn, class T>
 T ThreadFunction(void* param) noexcept {
     auto threadData = static_cast<ThreadData<Fn, T>*>(param);
     threadData->retdata = threadData->fn();
     return threadData->retdata;
+}
+template <class Fn, class T, class... Args, size_t... Indices>
+decltype(auto) ThreadFunctionImpl(ThreadData2<Fn, T, Args...>* threadData, std::index_sequence<Indices...>) noexcept {
+    T retdata = threadData->fn(std::get<Indices>(threadData->params)...);
+    threadData->retdata = retdata;
+    return retdata;
 }
 template <class Fn,class T, class... Args>
 decltype(auto) ThreadFunction2(void* param) noexcept {
