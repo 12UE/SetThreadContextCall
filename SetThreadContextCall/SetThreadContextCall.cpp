@@ -111,7 +111,7 @@ public:
 #pragma pack(pop)
 template <class Fn,class T, class... Args, size_t... Indices>
 decltype(auto) ThreadFunctionImpl(ThreadData2<Fn,T, Args...>* threadData, std::index_sequence<Indices...>) noexcept {
-    T retdata = threadData->fn((std::decay_t<Args>)std::get<Indices>(threadData->params)...);
+    T retdata = threadData->fn(std::get<Indices>(threadData->params)...);
     threadData->retdata = retdata;
     return retdata;
 }
