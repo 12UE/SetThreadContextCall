@@ -444,11 +444,7 @@ public:
                     do {
                         if (threadEntry.th32OwnerProcessID == m_pid) {
                             Thread thread(threadEntry);
-                            if (thread.IsRunning()) {
-                                if (pre(threadEntry) ==EnumStatus_Break){
-                                    break;
-                                }
-                            }
+                            if (thread.IsRunning())if (pre(threadEntry) == EnumStatus_Break)break;
                         }
                     } while (Thread32Next(hSnapshot, &threadEntry));
                 }
