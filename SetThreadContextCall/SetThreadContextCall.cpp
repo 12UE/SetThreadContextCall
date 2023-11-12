@@ -80,7 +80,7 @@ public:
         if (!instance) {
             std::call_once(flag, [&]() {//call once
                 instance = std::make_shared<T>(args...);//element constructor through parameters
-                });
+            });
         }
         return *instance.get();//return instance
     }
@@ -115,16 +115,14 @@ T ThreadFunction(void* param) noexcept {
     threadData->retdata = threadData->fn();
     return threadData->retdata;
 }
-template <class Fn, class T, class... Args, size_t... Indices>
-decltype(auto) ThreadFunctionImpl(ThreadData2<Fn, T, Args...>* threadData, std::index_sequence<Indices...>) noexcept {
-    T retdata = threadData->fn(std::get<Indices>(threadData->params)...);
-    threadData->retdata = retdata;
-    return retdata;
-}
-template <class Fn,class T, class... Args>
+template <class Fn, class T, class... Args>
 decltype(auto) ThreadFunction2(void* param) noexcept {
-    auto threadData = static_cast<ThreadData2<Fn,T, Args...>*>(param);
-    return ThreadFunctionImpl(threadData, std::make_index_sequence<sizeof...(Args)>{});
+    auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
+    return [threadData](auto index) {
+        T retdata = std::apply(threadData->fn, threadData->params);
+        threadData->retdata = retdata;
+        return retdata;
+    }(std::make_index_sequence<sizeof...(Args)>{});
 }
 typedef class DATA_CONTEXT {
 public:
@@ -137,19 +135,19 @@ public:
 inline BYTE ContextInjectShell[] = {			//x64.asm
     0x50,								//push	rax
     0x53,								//push	rbx
-    0x9c,								//pushfq							//保存flag寄存器
+    0x9c,								//pushfq							//保存flag寄存器    save flag register
     0xe8,0x00,0x00,0x00,0x00,			//call	next
     0x5b,								//pop	rbx
     0x48,0x83,0xeb,0x08,				//sub	rbx,08
     0x51,								//push	rcx	
-    0x48,0x83,0xEC,0x28,				//sub	rsp,0x28					//为call 的参数分配空间
-    0x48,0x8b,0x4b,0x38,				//mov	rcx,[rbx+0x38]				//lparam 路径地址
-    0xff,0x53,0x30,						//call	qword ptr[rbx+0x30]			//call threadproc
-    0x48,0x83,0xc4,0x28,				//add	rsp,0x28					//撤销临时空间
+    0x48,0x83,0xEC,0x28,				//sub	rsp,0x28					//为call 的参数分配空间 allocate space for call parameter
+    0x48,0x8b,0x4b,0x38,				//mov	rcx,[rbx+0x38]				//lparam 路径地址   lparam address
+    0xff,0x53,0x30,						//call	qword ptr[rbx+0x30]			//call threadproc   call threadproc
+    0x48,0x83,0xc4,0x28,				//add	rsp,0x28					//撤销临时空间  undo temporary space
     0x59,								//pop	rcx
-    0x48,0x8b,0x43,0x40,				//mov	rax,[rbx+0x40]				//取rip到rax
+    0x48,0x8b,0x43,0x40,				//mov	rax,[rbx+0x40]				//取rip到rax    get rip to rax
     0x48,0x87,0x44,0x24,0x24,			//xchg	[rsp+24],rax				
-    0x9d,								//popfq								//还原标志寄存器
+    0x9d,								//popfq								//还原标志寄存器    restore flag register
     0x5b,								//pop	rbx
     0x58,								//pop	rax
     0xc3,								//retn		
@@ -164,44 +162,32 @@ inline BYTE ContextInjectShell[] = {	//x86.asm
     0x83,0xeb,0x08,						//sub	ebx,8
     0x3e,0xff,0x73,0x34,				//push	dword ptr ds:[ebx + 0x34]	//lparam
     0x3e,0xff,0x53,0x30,				//call	dword ptr ds:[ebx + 0x30]	//threadproc
-    0x3e,0x8b,0x43,0x38,				//mov	eax,dword ptr ds:[ebx+0x38]	//取EIP到eax
+    0x3e,0x8b,0x43,0x38,				//mov	eax,dword ptr ds:[ebx+0x38]	//取EIP到eax    get eip to eax
     0x87,0x44,0x24,0x24,				//xchg	eax,[esp+0x24]
     0x9d,								//popfd
     0x61,								//popad
     0xc3								//retn
 };
 #endif
-HWND g_hwnd;  // 用于存储符合条件的窗口句柄
-
-BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
-    DWORD processId;
-    GetWindowThreadProcessId(hwnd, &processId);  // 获取窗口所属进程的ID
-    if (processId == static_cast<DWORD>(lParam)) {
-        g_hwnd=hwnd;  // 将符合条件的窗口句柄存储起来
-        return false;
-    }
-    return TRUE;
-}
-
 class Thread {
     HANDLE m_hThread = INVALID_HANDLE_VALUE;
     DWORD m_dwThreadId = 0;
     bool m_bAttached = false;
 public:
     Thread() = default;
-    //打开线程
+    //打开线程 open thread
     Thread(DWORD dwThreadId) {
         m_dwThreadId = dwThreadId;
         m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
         m_bAttached = true;
     }
-    //从threadentry32构造
+    //从threadentry32构造 construct from threadentry32
     Thread(const THREADENTRY32& threadEntry) {
         m_dwThreadId = threadEntry.th32ThreadID;
         m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
         m_bAttached = true;
     }
-    //移动构造
+    //移动构造  move construct
     Thread(Thread&& other) {
         m_hThread = other.m_hThread;
         m_dwThreadId = other.m_dwThreadId;
@@ -210,7 +196,7 @@ public:
         other.m_dwThreadId = 0;
         other.m_bAttached = false;
     }
-    //移动赋值
+    //移动赋值 move assignment
     Thread& operator=(Thread&& other) {
         if (this != &other) {
             m_hThread = other.m_hThread;
@@ -222,14 +208,14 @@ public:
         }
         return *this;
     }
-    //关闭线程句柄
+    //关闭线程句柄  close thread handle
     ~Thread() {
         if (m_bAttached)CloseHandle(m_hThread);
     }
-    //获取线程句柄
+    //获取线程句柄  get thread handle
     HANDLE GetHandle() {return m_hThread;}
     bool IsRunning() {
-        //获取线程退出代码
+        //获取线程退出代码  get thread exit code
         DWORD dwExitCode = 0;
         if (GetExitCodeThread(m_hThread, &dwExitCode)) {
             if (dwExitCode == STILL_ACTIVE) {
@@ -238,26 +224,26 @@ public:
         }
         return false;
     }
-    //获取上下文
+    //获取上下文    get context
     CONTEXT GetContext() {
         CONTEXT context = { 0 };
         context.ContextFlags = CONTEXT_FULL;
         GetThreadContext(m_hThread, &context);
         return context;
     }
-    //设置上下文
+    //设置上下文    set context
     void SetContext(CONTEXT& context) {
         SetThreadContext(m_hThread, &context);
     }
-    //暂停
+    //暂停  suspend
     void Suspend() {
         SuspendThread(m_hThread);
     }
-    //恢复
+    //恢复  resume
     void Resume() {
         ResumeThread(m_hThread);
     }
-    //PostThreadMessage
+    //PostThreadMessage 
     BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) {
         return ::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
     }
@@ -267,7 +253,7 @@ class ThreadSafeVector {
     std::mutex m_mutex;
     std::vector<T> m_vector;
 public:
-    //聚合初始化
+    //聚合初始化    aggregate initialization
     ThreadSafeVector(std::initializer_list<T> list) :m_vector(list) {}
     ThreadSafeVector() = default;
     ThreadSafeVector(const ThreadSafeVector& other) {
@@ -341,7 +327,7 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.assign(list);
     }
-    //迭代器assign
+    //迭代器assign  iterator assign
     template<class InputIt>
     void assign(InputIt first, InputIt last) {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -355,7 +341,7 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.erase(it);
     }
-    //不安全的删除
+    //不安全的删除  unsafe erase
     void erase(typename std::vector<T>::iterator it) {
         m_vector.erase(it);
     }
@@ -448,15 +434,9 @@ public:
         if (m_bAttached)return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
         return 0;
     }
-    //get HWND
-    HWND GetHWND() {
-        EnumWindows(EnumWindowsProc, m_pid);
-        return g_hwnd;
-    }
     template<class PRE>
     void EnumThread(PRE pre) {//enum thread through snapshot
         if (m_bAttached) {
-            auto WindowThreadId = GetThreadIdByHwnd();
             auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (hSnapshot != INVALID_HANDLE_VALUE) {
                 THREADENTRY32 threadEntry = { 0 };
@@ -464,9 +444,8 @@ public:
                 if (Thread32First(hSnapshot, &threadEntry)) {
                     do {
                         if (threadEntry.th32OwnerProcessID == m_pid) {
-                            
                             Thread thread(threadEntry.th32ThreadID);
-                            if (thread.IsRunning()&&threadEntry.th32ThreadID!=WindowThreadId ) {
+                            if (thread.IsRunning()) {
                                 
                                 if (pre(threadEntry) ==EnumStatus_Break){
                                     break;
@@ -616,12 +595,6 @@ private:
         }
         return pid;
     }
-    //获取窗口线程的id
-    DWORD GetThreadIdByHwnd() {
-        DWORD dwThreadId = 0;
-        GetWindowThreadProcessId(GetHWND(), &dwThreadId);
-        return dwThreadId;
-    }
 };
 void Process::preprocessparameter(const char*& arg) {//process parameter
     auto nlen = (int)strlen(arg) + 1;
@@ -652,7 +625,7 @@ int main()
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
 
-    std::cout<<Process.SetContextCall(GetCurrentProcessId).get();//call messageboxa
+    Process.SetContextCall(MessageBoxA, NullToHwnd(), "hello", "world", MB_OK);//call MessageBoxA
     return 0;
 }
 
