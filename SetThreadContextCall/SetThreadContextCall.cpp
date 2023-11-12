@@ -439,8 +439,7 @@ public:
         if (m_bAttached) {
             auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (hSnapshot != INVALID_HANDLE_VALUE) {
-                THREADENTRY32 threadEntry = { 0 };
-                threadEntry.dwSize = sizeof(THREADENTRY32);
+                THREADENTRY32 threadEntry = { sizeof(THREADENTRY32), };
                 if (Thread32First(hSnapshot, &threadEntry)) {
                     do {
                         if (threadEntry.th32OwnerProcessID == m_pid) {
