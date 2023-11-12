@@ -516,7 +516,6 @@ public:
             m_vecAllocMem.emplace_back(lpShell);
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-            
             threadData.fn = _Fx;
             auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType>;
             int length = GetLength((BYTE*)pFunction);
