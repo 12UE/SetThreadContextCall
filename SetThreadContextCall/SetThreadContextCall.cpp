@@ -444,9 +444,8 @@ public:
                 if (Thread32First(hSnapshot, &threadEntry)) {
                     do {
                         if (threadEntry.th32OwnerProcessID == m_pid) {
-                            Thread thread(threadEntry.th32ThreadID);
+                            Thread thread(threadEntry);
                             if (thread.IsRunning()) {
-                                
                                 if (pre(threadEntry) ==EnumStatus_Break){
                                     break;
                                 }
@@ -620,11 +619,9 @@ HWND NullToHwnd(){
 HANDLE NullToHandle(){
     return reinterpret_cast<HANDLE>(NULL);
 }
-int main()
-{
+int main(){
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-
     Process.SetContextCall(MessageBoxA, NullToHwnd(), "hello", "world", MB_OK);//call MessageBoxA
     return 0;
 }
