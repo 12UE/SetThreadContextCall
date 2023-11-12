@@ -463,6 +463,7 @@ public:
         Thread _thread{};
         CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
+        ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
         EnumThread([&](THREADENTRY32& te32)->int {
             auto thread = Thread(te32.th32ThreadID);
             thread.Suspend();
@@ -472,7 +473,6 @@ public:
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
             if constexpr (sizeof...(args) > 0) preprocess(args...);
-            ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
             threadData.fn = _Fx;
             threadData.params = std::tuple(std::forward<Arg>(args)...);
             auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;
@@ -497,7 +497,6 @@ public:
             return EnumStatus_Break;
         });
         WaitThread(_thread, _ctx.XIP);
-        ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));
         return threadData.retdata;
     }
@@ -508,6 +507,7 @@ public:
         Thread _thread{};
         CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
+        ThreadData<std::decay_t<_Fn>, RetType> threadData;
         EnumThread([&](THREADENTRY32& te32)->int {
             auto thread = Thread(te32.th32ThreadID);
             thread.Suspend();
@@ -516,7 +516,7 @@ public:
             m_vecAllocMem.emplace_back(lpShell);
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-            ThreadData<std::decay_t<_Fn>, RetType> threadData;
+            
             threadData.fn = _Fx;
             auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType>;
             int length = GetLength((BYTE*)pFunction);
@@ -540,7 +540,6 @@ public:
             return EnumStatus_Break;
         });
         WaitThread(_thread, _ctx.XIP);
-        ThreadData<std::decay_t<_Fn>, RetType> threadData;
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));
         return threadData.retdata;
     }
