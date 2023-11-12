@@ -1,7 +1,7 @@
 #include <iostream>
 #include <Windows.h>
-#include <Zydis/Zydis.h>//through vcpkg install Zydis:x64-windows:vcpkg.exe install Zydis:x64-windows-static
-#include <TlHelp32.h>
+#include <Zydis/Zydis.h>//through vcpkg install Zydis:x64-windows:vcpkg.exe install Zydis:x64-windows-static.Not intall vcpkg can download from git
+#include <TlHelp32.h>//zydis is not default install in vcpkg if you want to use x86 vcpkg install Zydis:x86-windows-static
 #pragma comment(lib,"Zydis.lib")//vcpkg use static lib
 #include <atomic>
 #include <algorithm>
@@ -87,19 +87,19 @@ public:
 };
 #define EnumStatus_Continue (int)0
 #define EnumStatus_Break (int)1
-//保存原始pack
+//保存原始pack save original pack
 #pragma pack(push)
 #pragma pack(1)
 template<class Fn, class T>
 class ThreadData {
 public:
-    Fn fn;
-    T retdata;
+    Fn fn;//function
+    T retdata;//return data
 };
 template <class Fn,class T,class ...Args>
-class ThreadData2:public ThreadData<Fn,T> {//Thread Data Struct
+class ThreadData2:public ThreadData<Fn,T> {//Thread Data Struct inherit from ThreadData
 public:
-    std::tuple<Args...> params;
+    std::tuple<Args...> params;//parameters
     std::size_t TupleSize(){
         return sizeof...(Args);
     }
@@ -107,7 +107,7 @@ public:
         return (sizeof(Args) + ...);
     }
 };
-#pragma pack(pop)
+#pragma pack(pop)//恢复原始pack restore original pack
 
 template <class Fn, class T>
 T ThreadFunction(void* param) noexcept {
@@ -250,7 +250,7 @@ public:
 };
 template <typename T>
 class ThreadSafeVector {
-    std::mutex m_mutex;
+    std::mutex m_mutex; //lock for vector
     std::vector<T> m_vector;
 public:
     //聚合初始化    aggregate initialization
@@ -415,6 +415,7 @@ public:
         }
         return 0;
     }
+    //writeapi
     ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//WriteProcessMemory
         if (m_bAttached) {
             SIZE_T bytesWritten = 0;
@@ -423,6 +424,7 @@ public:
         }
         return 0;
     }
+    //allocmemapi
     UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) {//return allocated memory address
         if (m_bAttached) {
             auto allocatedMemory = VirtualAllocEx(m_hProcess, PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
@@ -430,6 +432,7 @@ public:
         }
         return 0;
     }
+    //freememapi
     int _FreeMemApi(LPVOID lpAddress) {//free memory
         if (m_bAttached)return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
         return 0;
@@ -458,89 +461,89 @@ public:
     }
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args){
-        using RetType = std::common_type<decltype(_Fx(args...))>::type;
+        using RetType = std::common_type<decltype(_Fx(args...))>::type;//return type is common type or not
         if (!m_bAttached) return RetType();
         Thread _thread{};
         CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
         ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
-        EnumThread([&](THREADENTRY32& te32)->int {
-            auto thread = Thread(te32.th32ThreadID);
-            thread.Suspend();
-            auto ctx = thread.GetContext();
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);
-            m_vecAllocMem.emplace_back(lpShell);
+        EnumThread([&](auto& te32)->int {
+            auto thread = Thread(te32);//construct thread
+            thread.Suspend();//suspend thread
+            auto ctx = thread.GetContext();//get context
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory
+            m_vecAllocMem.emplace_back(lpShell);//
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-            if constexpr (sizeof...(args) > 0) preprocess(args...);
+            if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter
             threadData.fn = _Fx;
-            threadData.params = std::tuple(std::forward<Arg>(args)...);
-            auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;
-            int length = GetLength((BYTE*)pFunction);
-            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);
-            m_vecAllocMem.emplace_back(lpFunction);
-            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);
-            dataContext.pFunction = (LPVOID)lpFunction.raw();
-            dataContext.OriginalEip = (LPVOID)ctx.XIP;
+            threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters
+            auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address
+            int length = GetLength((BYTE*)pFunction);//get function length
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
+            m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function
+            dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
+            dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
             using parametertype = decltype(threadData);
-            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);
-            m_vecAllocMem.emplace_back(lpParameter);
-            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));
-            dataContext.lpParameter = (PBYTE)lpParameter.raw();
-            _paramAddr = (UDWORD)lpParameter.raw();
-            _ctx = ctx;
-            ctx.XIP = (UDWORD)lpShell.raw();
-            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));
-            thread.SetContext(ctx);
-            thread.Resume();
-            _thread = std::move(thread);
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
+            m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory
+            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter
+            dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address
+            _paramAddr = (UDWORD)lpParameter.raw();//set parameter address
+            _ctx = ctx;//save context
+            ctx.XIP = (UDWORD)lpShell.raw();//set xip
+            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext
+            thread.SetContext(ctx);//set context
+            thread.Resume();//resume thread
+            _thread = std::move(thread);//move thread
             return EnumStatus_Break;
         });
-        WaitThread(_thread, _ctx.XIP);
-        _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));
-        return threadData.retdata;
+        WaitThread(_thread, _ctx.XIP);//wait thread running to xip
+        _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
+        return threadData.retdata;//return value
     }
     template <class _Fn>
     decltype(auto) SetContextCallImpl(_Fn&& _Fx) {
-        using RetType = std::common_type<decltype(_Fx())>::type;
-        if (!m_bAttached) return RetType();
+        using RetType = std::common_type<decltype(_Fx())>::type;//return type is common type or not
+        if (!m_bAttached) return RetType();//return default value
         Thread _thread{};
         CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
-        ThreadData<std::decay_t<_Fn>, RetType> threadData;
-        EnumThread([&](THREADENTRY32& te32)->int {
-            auto thread = Thread(te32.th32ThreadID);
-            thread.Suspend();
-            auto ctx = thread.GetContext();
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);
-            m_vecAllocMem.emplace_back(lpShell);
+        ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data
+        EnumThread([&](auto& te32)->int {
+            auto thread = Thread(te32);//construct thread
+            thread.Suspend();//suspend thread
+            auto ctx = thread.GetContext();//get context
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext
+            m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
             threadData.fn = _Fx;
-            auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType>;
-            int length = GetLength((BYTE*)pFunction);
-            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);
+            auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType>;//get function address
+            int length = GetLength((BYTE*)pFunction);//get function length
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
             m_vecAllocMem.emplace_back(lpFunction);
-            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);
-            dataContext.pFunction = (LPVOID)lpFunction.raw();
-            dataContext.OriginalEip = (LPVOID)ctx.XIP;
-            using parametertype = decltype(threadData);
-            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory
+            dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
+            dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
+            using parametertype = decltype(threadData);//get parameter type
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
             m_vecAllocMem.emplace_back(lpParameter);
-            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));
+            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory
             dataContext.lpParameter = (PBYTE)lpParameter.raw();
             _paramAddr = (UDWORD)lpParameter.raw();
-            _ctx = ctx;
-            ctx.XIP = (UDWORD)lpShell.raw();
-            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));
-            thread.SetContext(ctx);
-            thread.Resume();
-            _thread = std::move(thread);
+            _ctx = ctx;//store context
+            ctx.XIP = (UDWORD)lpShell.raw();//set xip
+            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory
+            thread.SetContext(ctx);//set context
+            thread.Resume();//resume thread
+            _thread = std::move(thread);//store thread
             return EnumStatus_Break;
         });
-        WaitThread(_thread, _ctx.XIP);
-        _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));
-        return threadData.retdata;
+        WaitThread(_thread, _ctx.XIP);//wait thread running to xip
+        _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
+        return threadData.retdata;//return value
     }
     template <typename T>
     struct is_callable {
@@ -548,7 +551,7 @@ public:
         static auto test(U* p) -> decltype((*p)(), std::true_type());
         template <typename U>
         static std::false_type test(...);
-        static constexpr bool value = decltype(test<T>(nullptr))::value;
+        static constexpr bool value = decltype(test<T>(nullptr))::value;//is callable
     };
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
