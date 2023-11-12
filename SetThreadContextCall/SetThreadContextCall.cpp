@@ -576,7 +576,7 @@ private:
         DWORD pid = 0;
         auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (hSnapshot != INVALID_HANDLE_VALUE) {
-            PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32), };
+            PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
             if (Process32First(hSnapshot, &processEntry)) {
                 do {
                     if (_ucsicmp(processEntry.szExeFile, processName) == 0) {
