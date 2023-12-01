@@ -2,7 +2,7 @@
 #include <Windows.h>
 #include <Zydis/Zydis.h>//through vcpkg install Zydis:x64-windows:vcpkg.exe install Zydis:x64-windows-static.Not intall vcpkg can download from git
 #include <TlHelp32.h>//zydis is not default install in vcpkg if you want to use x86 vcpkg install Zydis:x86-windows-static
-#pragma comment(lib,"Zydis.lib")//vcpkg use static lib
+//#pragma comment(lib,"Zydis.lib")//vcpkg use static lib
 #include <atomic>
 #include <algorithm>
 #include <mutex>
@@ -95,6 +95,9 @@ class ThreadData {
 public:
     Fn fn;//function
     T retdata;//return data
+    char eventname[MAX_PATH];
+    char funcname[3][MAX_PATH];
+    LPVOID pFunc[2];
 };
 template <class Fn,class T,class ...Args>
 class ThreadData2:public ThreadData<Fn,T> {//Thread Data Struct inherit from ThreadData
@@ -108,21 +111,55 @@ public:
     }
 };
 #pragma pack(pop)//恢复原始pack restore original pack
-
+typedef HMODULE(WINAPI* PLOADLIBRARYA)(
+  LPCSTR lpLibFileName
+);
+typedef FARPROC(WINAPI* PGETPROCADDRESS)(
+  HMODULE hModule,
+  LPCSTR  lpProcName
+);
+typedef HANDLE (WINAPI* POPENEVENTA)(
+    DWORD dwDesiredAccess,
+    BOOL bInheritHandle,
+    LPCSTR lpName
+    );
+typedef BOOL (WINAPI* PSETEVENT)(
+    HANDLE hEvent
+    );
 template <class Fn, class T>
 T ThreadFunction(void* param) noexcept {
     auto threadData = static_cast<ThreadData<Fn, T>*>(param);
     threadData->retdata = threadData->fn();
+    auto pLoadLibrary= (PLOADLIBRARYA)threadData->pFunc[0];
+    auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+    //加载OpenEventA
+    auto hEvent = pLoadLibrary(threadData->funcname[0]);
+    auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
+    //打开事件
+    auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+    //设置事件
+    auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+    pSetEvent(hEventHandle);
     return threadData->retdata;
 }
 template <class Fn, class T, class... Args>
 decltype(auto) ThreadFunction2(void* param) noexcept {
     auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
-    return [threadData](auto index) {
-        T retdata = std::apply(threadData->fn, threadData->params);
-        threadData->retdata = retdata;
-        return retdata;
+    auto ret=[threadData](auto index) {
+        threadData->retdata = std::apply(threadData->fn, threadData->params);
+        return threadData->retdata;
     }(std::make_index_sequence<sizeof...(Args)>{});
+    auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
+    auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+    //加载OpenEventA
+    auto hEvent = pLoadLibrary(threadData->funcname[0]);
+    auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
+    //打开事件
+    auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+    //设置事件
+    auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+    pSetEvent(hEventHandle);
+    return ret;
 }
 typedef class DATA_CONTEXT {
 public:
@@ -246,6 +283,13 @@ public:
     //PostThreadMessage 
     BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) {
         return ::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
+    }
+    void QueApc(void* Addr) {
+        QueueUserAPC((PAPCFUNC)Addr, m_hThread, 0);
+    }
+    //设置线程优先级  set thread priority
+    void SetPriority(int nPriority= THREAD_PRIORITY_HIGHEST) {
+        SetThreadPriority(m_hThread, nPriority);
     }
 };
 template <typename T>
@@ -459,6 +503,7 @@ public:
         for (auto& p : m_vecAllocMem) p.Release();
         m_vecAllocMem.clear();
     }
+    
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args){
         using RetType = std::common_type<decltype(_Fx(args...))>::type;//return type is common type or not
@@ -467,6 +512,18 @@ public:
         CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
         ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
+        strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
+        strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
+        strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
+        strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
+        //创建事件
+        auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
+        //获取地址
+        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
+        auto pGetProcAddress = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetProcAddress");
+        //设置函数地址
+        threadData.pFunc[0] = (LPVOID)pLoadLibrary;
+        threadData.pFunc[1] = (LPVOID)pGetProcAddress;
         EnumThread([&](auto& te32)->int {
             auto thread = Thread(te32);//construct thread
             thread.Suspend();//suspend thread
@@ -499,7 +556,8 @@ public:
             _thread = std::move(thread);//move thread
             return EnumStatus_Break;
         });
-        WaitThread(_thread, _ctx.XIP);//wait thread running to xip
+        WaitForSingleObject(hEvent, INFINITE);//wait event
+        CloseHandle(hEvent);//close event
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
         return threadData.retdata;//return value
     }
@@ -511,6 +569,18 @@ public:
         CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
         ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data
+        strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
+        strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
+        strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
+        strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
+        //创建事件
+        auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
+        //获取地址
+        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]),"LoadLibraryA");
+        auto pGetProcAddress = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetProcAddress");
+        //设置函数地址
+        threadData.pFunc[0] = (LPVOID)pLoadLibrary;
+        threadData.pFunc[1] = (LPVOID)pGetProcAddress;
         EnumThread([&](auto& te32)->int {
             auto thread = Thread(te32);//construct thread
             thread.Suspend();//suspend thread
@@ -541,7 +611,8 @@ public:
             _thread = std::move(thread);//store thread
             return EnumStatus_Break;
         });
-        WaitThread(_thread, _ctx.XIP);//wait thread running to xip
+        WaitForSingleObject(hEvent, INFINITE);//wait event
+        CloseHandle(hEvent);//close event
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
         return threadData.retdata;//return value
     }
@@ -614,10 +685,12 @@ HWND NullToHwnd(){
 HANDLE NullToHandle(){
     return reinterpret_cast<HANDLE>(NULL);
 }
-int main(){
+int main()
+{
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-    Process.SetContextCall(MessageBoxA, NullToHwnd(), "hello", "world", MB_OK);//call MessageBoxA
+
+    std::cout << Process.SetContextCall(MessageBoxA,(HWND)0,"hi","ok",MB_OK).get();//call GetCurrentProcessId
     return 0;
 }
 
