@@ -660,6 +660,7 @@ public:
         WaitForSingleObject(hEvent, INFINITE);//wait event
         CloseHandle(hEvent);//close event
         if(maptoorigin.size()>0)postprocess(args...);
+        maptoorigin.clear();
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
         return threadData.retdata;//return value
     }
