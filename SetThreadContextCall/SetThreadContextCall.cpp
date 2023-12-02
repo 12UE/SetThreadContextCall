@@ -15,6 +15,7 @@
 #include <future>
 #include <chrono>
 #include <mutex>
+#include<unordered_map>
 #if defined _WIN64
 using UDWORD = DWORD64;
 #define XIP Rip//instruction pointer
@@ -26,7 +27,76 @@ using UDWORD = DWORD32;
 #define XAX Eax//accumulator
 #define U64_ "%x"//U64_ When using, be careful not to add "%" again
 #endif
-#include"SharedPtr.h"
+class Shared_Ptr {
+    HANDLE m_hProcess = nullptr;
+    LPVOID BaseAddress = nullptr;
+    int refCount = 0;
+    void AddRef() {
+        refCount++;
+    }
+    UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) {
+        auto allocatedMemory = VirtualAllocEx(m_hProcess, PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        return reinterpret_cast<UDWORD>(allocatedMemory);
+    }
+    bool _FreeMemApi(LPVOID lpAddress) {
+        return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
+    }
+public:
+    Shared_Ptr(void* Addr, HANDLE hProc) : m_hProcess(hProc) {
+        BaseAddress = Addr;
+        AddRef();
+    }
+    template<class T>
+    Shared_Ptr() {
+        AddRef();
+        BaseAddress = (LPVOID)_AllocMemApi(sizeof(T));
+    }
+    Shared_Ptr(size_t nsize, HANDLE hProc) :m_hProcess(hProc) {
+        AddRef();
+        //virtualallocex
+        BaseAddress = (LPVOID)_AllocMemApi(nsize);
+
+    }
+    Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount) {
+        AddRef();
+    }
+    Shared_Ptr& operator=(const Shared_Ptr& other) {//copy assignment
+        if (this != &other) {
+            Release();
+            BaseAddress = other.BaseAddress;
+            refCount = other.refCount;
+            AddRef();
+        }
+        return *this;
+    }
+    LPVOID get() {
+        AddRef();
+        return BaseAddress;
+    }
+    LPVOID raw() {
+        return BaseAddress;
+    }
+    UDWORD getUDWORD() {
+        AddRef();
+        return (UDWORD)BaseAddress;
+    }
+    ~Shared_Ptr() {
+        Release();
+    }
+    void Release() {//release and refCount--
+        refCount--;
+        if (BaseAddress && refCount <= 0) {
+            _FreeMemApi(BaseAddress);
+            BaseAddress = nullptr;
+        }
+    }
+    operator bool() {
+        return BaseAddress != nullptr;
+    }
+
+};
+template<class T>Shared_Ptr make_Shared(size_t nsize, HANDLE hprocess) { return Shared_Ptr(sizeof(T) * nsize, hprocess); }
+
 UDWORD GetLength(BYTE* _buffer, UDWORD _length = 65535) {//Get the length of the function default 65535 because the function is not so long
     ZyanU64 runtime_address = (ZyanU64)_buffer;
     ZyanUSize offset = 0;
@@ -53,13 +123,15 @@ template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * 
     if constexpr (!std::is_same_v<remove_const_pointer_t<Tx>, wchar_t>) {
         strtemp = str1;
         wstr1 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring
-    }else {
+    }
+    else {
         wstr1 = str1;
     }
     if constexpr (!std::is_same_v<remove_const_pointer_t<Ty>, wchar_t>) {
         strtemp = str2;
         wstr2 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring
-    }else {
+    }
+    else {
         wstr2 = str2;
     }
     std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower
@@ -80,7 +152,7 @@ public:
         if (!instance) {
             std::call_once(flag, [&]() {//call once
                 instance = std::make_shared<T>(args...);//element constructor through parameters
-            });
+                });
         }
         return *instance.get();//return instance
     }
@@ -99,11 +171,11 @@ public:
     char funcname[3][MAX_PATH];
     LPVOID pFunc[2];
 };
-template <class Fn,class T,class ...Args>
-class ThreadData2:public ThreadData<Fn,T> {//Thread Data Struct inherit from ThreadData
+template <class Fn, class T, class ...Args>
+class ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from ThreadData
 public:
     std::tuple<Args...> params;//parameters
-    std::size_t TupleSize(){
+    std::size_t TupleSize() {
         return sizeof...(Args);
     }
     int GetParamsSize() {
@@ -112,25 +184,25 @@ public:
 };
 #pragma pack(pop)//恢复原始pack restore original pack
 typedef HMODULE(WINAPI* PLOADLIBRARYA)(
-  LPCSTR lpLibFileName
-);
+    LPCSTR lpLibFileName
+    );
 typedef FARPROC(WINAPI* PGETPROCADDRESS)(
-  HMODULE hModule,
-  LPCSTR  lpProcName
-);
-typedef HANDLE (WINAPI* POPENEVENTA)(
+    HMODULE hModule,
+    LPCSTR  lpProcName
+    );
+typedef HANDLE(WINAPI* POPENEVENTA)(
     DWORD dwDesiredAccess,
     BOOL bInheritHandle,
     LPCSTR lpName
     );
-typedef BOOL (WINAPI* PSETEVENT)(
+typedef BOOL(WINAPI* PSETEVENT)(
     HANDLE hEvent
     );
 template <class Fn, class T>
 T ThreadFunction(void* param) noexcept {
     auto threadData = static_cast<ThreadData<Fn, T>*>(param);
     threadData->retdata = threadData->fn();
-    auto pLoadLibrary= (PLOADLIBRARYA)threadData->pFunc[0];
+    auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
     auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
     //加载OpenEventA
     auto hEvent = pLoadLibrary(threadData->funcname[0]);
@@ -145,21 +217,21 @@ T ThreadFunction(void* param) noexcept {
 template <class Fn, class T, class... Args>
 decltype(auto) ThreadFunction2(void* param) noexcept {
     auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
-    auto ret=[threadData](auto index) {
+    auto ret = [threadData](auto index) {
         threadData->retdata = std::apply(threadData->fn, threadData->params);
         return threadData->retdata;
-    }(std::make_index_sequence<sizeof...(Args)>{});
-    auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
-    auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-    //加载OpenEventA
-    auto hEvent = pLoadLibrary(threadData->funcname[0]);
-    auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
-    //打开事件
-    auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-    //设置事件
-    auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
-    pSetEvent(hEventHandle);
-    return ret;
+        }(std::make_index_sequence<sizeof...(Args)>{});
+        auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
+        auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+        //加载OpenEventA
+        auto hEvent = pLoadLibrary(threadData->funcname[0]);
+        auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
+        //打开事件
+        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+        //设置事件
+        auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+        pSetEvent(hEventHandle);
+        return ret;
 }
 typedef class DATA_CONTEXT {
 public:
@@ -250,7 +322,7 @@ public:
         if (m_bAttached)CloseHandle(m_hThread);
     }
     //获取线程句柄  get thread handle
-    HANDLE GetHandle() {return m_hThread;}
+    HANDLE GetHandle() { return m_hThread; }
     bool IsRunning() {
         //获取线程退出代码  get thread exit code
         DWORD dwExitCode = 0;
@@ -288,7 +360,7 @@ public:
         QueueUserAPC((PAPCFUNC)Addr, m_hThread, 0);
     }
     //设置线程优先级  set thread priority
-    void SetPriority(int nPriority= THREAD_PRIORITY_HIGHEST) {
+    void SetPriority(int nPriority = THREAD_PRIORITY_HIGHEST) {
         SetThreadPriority(m_hThread, nPriority);
     }
 };
@@ -420,7 +492,7 @@ public:
     }
 };
 template<class T>
-inline ThreadSafeVector<T> operator+(const ThreadSafeVector<T>& lhs, const ThreadSafeVector<T>& rhs) {
+inline ThreadSafeVector<T> operator+(const ThreadSafeVector<T>&lhs, const ThreadSafeVector<T>&rhs) {
     ThreadSafeVector<T> result;
     result.reserve(lhs.size() + rhs.size());
     for (size_t i = 0; i < lhs.size(); i++)result.push_back(lhs[i]);
@@ -432,14 +504,43 @@ class Process :public SingleTon<Process> {//Singleton
     DWORD m_pid;//process id
     std::atomic_bool m_bAttached;//atomic bool
     ThreadSafeVector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory
+    std::unordered_map<LPVOID, LPVOID> maptoorigin;
     template<typename T, typename ...Args>
     void preprocess(T& arg, Args&...args) {//partially specialized template
-        if constexpr (std::is_same_v<T, const char*>|| std::is_same_v<T, const wchar_t*>) preprocessparameter(arg);
-        if constexpr(sizeof...(args)>0)preprocess(args...);
+        if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, const wchar_t*>) preprocessparameter(arg);
+        if (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>)ProcessPtr(arg);
+        if constexpr (sizeof...(args) > 0)preprocess(args...);
     }
-    template<typename T>void preprocessparameter(T& arg) {}
+    template<class T, typename ...Args>
+    void postprocess(T& arg, Args&...args) {
+        if (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>)PostprocessPtr(arg);
+        if constexpr (sizeof...(args) > 0)postprocess(args...);//keep process
+    }
+    template<typename T>
+    void PostprocessPtr(T& ptr) {
+        auto iter = maptoorigin.find((LPVOID)ptr);
+        if (iter != maptoorigin.end()) {
+            LPVOID OriginAddr = iter->second;
+            _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));
+        }
+
+    }
+    template<typename T>
+    void preprocessparameter(T& arg) {}
     void preprocessparameter(const char*& arg);//process const char* parameter
     void preprocessparameter(const wchar_t*& arg);//process const wchar_t* parameter
+    void preprocessparameter(LPVOID& arg);//process LPVOID parameter
+    template<typename T>
+    void ProcessPtr(T& ptr) {
+        int Size = sizeof(T);
+        auto p = make_Shared<wchar_t>(Size, m_hProcess);
+        if (p) {
+            m_vecAllocMem.emplace_back(p);
+            _WriteApi(p.get(), (LPVOID)ptr, Size);
+            maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));
+            ptr = (T)p.raw();
+        }
+    }
 public:
     void Attach(const char* _szProcessName) {//attach process
         //get process id
@@ -503,9 +604,9 @@ public:
         for (auto& p : m_vecAllocMem) p.Release();
         m_vecAllocMem.clear();
     }
-    
+
     template<class _Fn, class ...Arg>
-    decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args){
+    decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args) {
         using RetType = std::common_type<decltype(_Fx(args...))>::type;//return type is common type or not
         if (!m_bAttached) return RetType();
         Thread _thread{};
@@ -555,9 +656,10 @@ public:
             thread.Resume();//resume thread
             _thread = std::move(thread);//move thread
             return EnumStatus_Break;
-        });
+            });
         WaitForSingleObject(hEvent, INFINITE);//wait event
         CloseHandle(hEvent);//close event
+        postprocess(args...);
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
         return threadData.retdata;//return value
     }
@@ -576,7 +678,7 @@ public:
         //创建事件
         auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址
-        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]),"LoadLibraryA");
+        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
         auto pGetProcAddress = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetProcAddress");
         //设置函数地址
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
@@ -610,7 +712,7 @@ public:
             thread.Resume();//resume thread
             _thread = std::move(thread);//store thread
             return EnumStatus_Break;
-        });
+            });
         WaitForSingleObject(hEvent, INFINITE);//wait event
         CloseHandle(hEvent);//close event
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
@@ -627,22 +729,15 @@ public:
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
         static_assert(!is_callable<_Fn>::value, "uncallable!");
-        auto retdata=SetContextCallImpl(_Fx, args...);
-        using RetType=decltype(retdata);
+        auto retdata = SetContextCallImpl(_Fx, args...);
+        using RetType = decltype(retdata);
         std::promise<RetType> promise{};
-        std::future<RetType> fut= promise.get_future();
+        std::future<RetType> fut = promise.get_future();
         promise.set_value(retdata);
         ClearMemory();
         return fut;
     }
 private:
-    void WaitThread(Thread& thread,UDWORD xip) {
-       CONTEXT _ctx{};
-       do {
-            std::this_thread::sleep_for(std::chrono::milliseconds(15));
-           _ctx = thread.GetContext();
-       } while ((UDWORD)_ctx.XIP <= xip);
-    }
     DWORD GetProcessIdByName(const char* processName) {//get process id by name
         DWORD pid = 0;
         auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -679,18 +774,19 @@ void Process::preprocessparameter(const wchar_t*& arg) {//process parameter
         arg = (const wchar_t*)p.raw();
     }
 }
-HWND NullToHwnd(){
-    return reinterpret_cast<HWND>(NULL);
+void Process::preprocessparameter(LPVOID & arg)
+{
 }
-HANDLE NullToHandle(){
-    return reinterpret_cast<HANDLE>(NULL);
+template<class T>
+T TONULL() {
+    return  reinterpret_cast<T>(0);
 }
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-
-    std::cout << Process.SetContextCall(MessageBoxA,(HWND)0,"hi","ok",MB_OK).get();//call GetCurrentProcessId
+    MEMORY_BASIC_INFORMATION        mbi;
+    std::cout << Process.SetContextCall(VirtualQuery, (LPVOID)0X142670D80, &mbi, sizeof(mbi)).get();//call GetCurrentProcessId
     return 0;
 }
 
