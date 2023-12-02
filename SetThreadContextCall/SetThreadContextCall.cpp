@@ -659,7 +659,7 @@ public:
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event
         CloseHandle(hEvent);//close event
-        postprocess(args...);
+        if(maptoorigin.size()>0)postprocess(args...);
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
         return threadData.retdata;//return value
     }
