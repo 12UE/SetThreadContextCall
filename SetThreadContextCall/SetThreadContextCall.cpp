@@ -504,7 +504,7 @@ class Process :public SingleTon<Process> {//Singleton
     DWORD m_pid;//process id
     std::atomic_bool m_bAttached;//atomic bool
     ThreadSafeVector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory
-    std::unordered_map<LPVOID, LPVOID> maptoorigin;
+    std::unordered_map<LPVOID, LPVOID> maptoorigin;//map for save original address and allocated address, key is allocated address value is original address
     template<typename T, typename ...Args>
     void preprocess(T& arg, Args&...args) {//partially specialized template
         if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, const wchar_t*>) preprocessparameter(arg);
@@ -513,15 +513,15 @@ class Process :public SingleTon<Process> {//Singleton
     }
     template<class T, typename ...Args>
     void postprocess(T& arg, Args&...args) {
-        if (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>)PostprocessPtr(arg);
+        if (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>)PostprocessPtr(arg);//post process pointer
         if constexpr (sizeof...(args) > 0)postprocess(args...);//keep process
     }
     template<typename T>
     void PostprocessPtr(T& ptr) {
-        auto iter = maptoorigin.find((LPVOID)ptr);
+        auto iter = maptoorigin.find((LPVOID)ptr);//find original address
         if (iter != maptoorigin.end()) {
-            LPVOID OriginAddr = iter->second;
-            _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));
+            LPVOID OriginAddr = iter->second;//original address
+            _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address
         }
 
     }
@@ -532,13 +532,13 @@ class Process :public SingleTon<Process> {//Singleton
     void preprocessparameter(LPVOID& arg);//process LPVOID parameter
     template<typename T>
     void ProcessPtr(T& ptr) {
-        int Size = sizeof(T);
-        auto p = make_Shared<wchar_t>(Size, m_hProcess);
+        int Size = sizeof(T);//get size
+        auto p = make_Shared<BYTE>(Size, m_hProcess);
         if (p) {
-            m_vecAllocMem.emplace_back(p);
-            _WriteApi(p.get(), (LPVOID)ptr, Size);
-            maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));
-            ptr = (T)p.raw();
+            m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory
+            _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer
+            maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address
+            ptr = (T)p.raw();//set parameter to allocated address
         }
     }
 public:
@@ -659,8 +659,8 @@ public:
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event
         CloseHandle(hEvent);//close event
-        if(maptoorigin.size()>0)postprocess(args...);
-        maptoorigin.clear();
+        if(maptoorigin.size()>0)postprocess(args...);//post process parameter
+        maptoorigin.clear();//clear map
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
         return threadData.retdata;//return value
     }
