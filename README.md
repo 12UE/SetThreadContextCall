@@ -10,7 +10,18 @@ Build Environment: Visual Studio 2022 Profresional.
 External Support Library: Zydis .  
 
 Recommended to use Vcpkg to install and use the static library.  
+Process Virtual Address: The Challenges of Data Writing and Retrieval
+In computer science, memory management is a complex and critical field. The operating system needs to manage and allocate memory during runtime to ensure the smooth operation of programs. However, this process is not always intuitive, especially when it comes to internal pointer operations. This article will explore the ReadProcessMemory and memcpy functions, and why retrieving data from virtual addresses within a process may be meaningless.
 
+Introduction to ReadProcessMemory and memcpy
+ReadProcessMemory is a function in the Windows operating system that allows one process to read the memory of another process. This function is commonly used by debuggers and other applications that need to access the memory of other processes.
+
+memcpy is a standard C library function used to copy bytes in memory, often used for copying arrays or structures. It works within the context of a single process and can be used to copy any accessible memory area.
+
+The Challenge of Internal Virtual Addresses
+Although ReadProcessMemory and memcpy can both be used for memory operations, retrieving data from virtual addresses within a process may be meaningless. This is because each process has its own virtual address space, and these address spaces are isolated from each other. Therefore, a pointer in one process may have no meaning in another process, or it may point to completely different data.
+
+In addition, virtual addresses do not always correspond to actual physical memory. The operating system uses virtual memory technology to map virtual addresses to physical memory. This means that even if you have a virtual address of a process, you cannot directly access its corresponding physical memory. You need to use mechanisms provided by the operating system, such as ReadProcessMemory or memcpy, to access this memory.
 ## usege:
 ```C++
 int main()
@@ -42,8 +53,36 @@ The Project is provided without any express or implied warranties, including but
 Under no circumstances shall the developer be liable for any direct, indirect, incidental, special, or consequential damages resulting from the use of the Project, including but not limited to loss of business profits, whether arising from contract, tort, or other legal theories, even if the developer has been advised of the possibility of such damages.
 
 By using the Project, you acknowledge that you have read and agree to comply with this disclaimer. If you do not agree with this disclaimer, please do not use the Project. The developer reserves the right to change this disclaimer at any time without notice.
+### スレッドコンテキストコール
+スレッドハイジャックは、カスタムコードを実行するために実行中のスレッドを制御する技術です。この技術は、低レベルのプログラミングやハッキングのシナリオでよく使用されます。スレッドハイジャックの一つの方法は、Call関数の使用です。 Call関数は、ハイジャッカーが指示ポインタ（IP）を変更してターゲットスレッドの実行フローをリダイレクトすることを可能にします。ハイジャッカーはまず、ターゲットスレッドの状態を安全に操作するためにターゲットスレッドを一時停止します。次に、IPをカスタムコードブロックまたは関数を指すように変更します。 スレッドが再開されると、元の指示ではなくカスタムコードを実行し始めます。これにより、ハイジャッカーは自身のロジックをターゲットスレッドの実行フローに注入することができます。カスタムコードは、ログの記録、メモリの変更、または悪意のある操作の実行などのアクションを実行することができます。 Callを使用したスレッドハイジャッキングは強力で、潜在的に危険な技術であることに注意が必要です。アセンブリ言語、スレッド管理、システム内部の深い理解が必要です。また、スレッドハイジャッキングの無許可の使用は、違法であり、セキュリティの慣行に反すると見なされる可能性があります。 この情報を責任を持って、教育目的のみで使用してください。
+
+### 注意
+ビルド環境：Visual Studio 2022 Professional。 外部サポートライブラリ：Zydis。 Vcpkgを使用して静的ライブラリをインストールおよび使用することを推奨します。
+
+プロセス仮想アドレス：データの書き込みと取得の課題 コンピュータ科学では、メモリ管理は複雑で重要な分野です。オペレーティングシステムは、プログラムのスムーズな動作を確保するために、ランタイム中にメモリを管理および割り当てる必要があります。しかし、このプロセスは常に直感的ではなく、特に内部ポインタ操作に関してはそうではありません。この記事では、ReadProcessMemoryとmemcpy関数を探り、プロセス内の仮想アドレスからデータを取得することが無意味である可能性について説明します。
+
+ReadProcessMemoryとmemcpyの紹介 ReadProcessMemoryは、Windowsオペレーティングシステムの関数で、あるプロセスが別のプロセスのメモリを読み取ることを可能にします。この関数は、他のプロセスのメモリにアクセスする必要があるデバッガやその他のアプリケーションで一般的に使用されます。
+
+memcpyは、メモリ内のバイトをコピーするための標準的なCライブラリ関数で、通常は配列や構造体のコピーに使用されます。これは単一のプロセスのコンテキスト内で動作し、任意のアクセス可能なメモリ領域のコピーに使用することができます。
+
+内部仮想アドレスの課題 ReadProcessMemoryとmemcpyの両方がメモリ操作に使用できる一方で、プロセス内の仮想アドレスからデータを取得することは無意味である可能性があります。これは、各プロセスが独自の仮想アドレス空間を持ち、これらのアドレス空間が互いに隔離されているためです。したがって、あるプロセスのポインタは、別のプロセスでは意味をなさないか、完全に異なるデータを指す可能性があります。
+
+さらに、仮想アドレスは常に実際の物理メモリに対応しているわけではありません。オペレーティングシステムは仮想メモリ技術を使用して、仮想アドレスを物理メモリにマッピングします。これは、プロセスの仮想アドレスを持っていても、その対応する物理メモリに直接アクセスすることはできないことを意味します。このメモリにアクセスするためには、ReadProcessMemoryやmemcpyなど、オペレーティングシステムが提供するメカニズムを使用する必要があります。この説明が役立つことを願っています！
 # SetThreadContextCall
-线程劫持，是一种黑客的绝技，能够操纵运行中的线程，让它们按照自己的意志行事。这种技术需要精通汇编语言，熟悉线程管理和系统内核。其中一种常用的方法，就是利用Call函数，改变目标线程的执行方向。 Call函数的作用，就是让目标线程跳转到一个新的地址，执行那里的代码。劫持者要先暂停目标线程，才能安全地修改它的状态。然后，他就可以把目标线程的指令指针（IP），也就是它的下一步行动，指向自己准备好的代码块或函数。 当目标线程恢复运行时，它就会发现自己不知不觉地走上了一条不归路。它开始执行劫持者的代码，而不是原本的指令。这样，劫持者就可以在目标线程的执行流中植入自己的逻辑。他可以利用这个机会，做一些记录、修改内存或执行恶意操作等事情。 使用Call进行线程劫持，是一种非常强大但也非常危险的技术。它可以让劫持者在不被察觉的情况下，对目标线程进行任意的操控。但是，这种技术也可能违反法律和安全规范，造成严重的后果。 请您谨慎地使用这些信息，仅用于学习和研究。
+线程劫持，是一种黑客的绝技，能够操纵运行中的线程，让它们按照自己的意志行事。这种技术需要精通汇编语言，熟悉线程管理和系统内核。其中一种常用的方法，就是利用Call函数，改变目标线程的执行方向。 Call函数的作用，就是让目标线程跳转到一个新的地址，执行那里的代码。劫持者要先暂停目标线程，才能安全地修改它的状态。然后，他就可以把目标线程的指令指针（IP），也就是它的下一步行动，指向自己准备好的代码块或函数。 当目标线程恢复运行时，它就会发现自己不知不觉地走上了一条不归路。它开始执行劫持者的代码，而不是原本的指令。这样，劫持者就可以在目标线程的执行流中植入自己的逻辑。他可以利用这个机会，做一些记录、修改内存或执行恶意操作等事情。 使用Call进行线程劫持，是一种非常强大但也非常危险的技术。它可以让劫持者在不被察觉的情况下，对目标线程进行任意的操控。但是，这种技术也可能违反法律和安全规范，造成严重的后果。 请您谨慎地使用这些信息，仅用于学习和研究。  
+
+进程虚拟地址：数据的写入与获取的挑战
+在计算机科学中，内存管理是一个复杂而关键的领域。操作系统需要在运行时管理和分配内存，以确保程序的顺利运行。然而，这个过程并非总是那么直观，特别是当涉及到内部指针操作时。本文将探讨ReadProcessMemory和memcpy函数，以及为什么在进程内部的虚拟地址上获取数据可能是毫无意义的。
+
+ReadProcessMemory与memcpy简介
+ReadProcessMemory是Windows操作系统中的一个函数，它允许一个进程读取另一个进程的内存。这个函数通常用于调试器和其他需要访问其他进程内存的应用程序。
+
+memcpy是一个标准的C库函数，用于在内存中复制字节，通常用于复制数组或者结构体。它在单个进程的上下文中工作，可以用于复制任何可以访问的内存区域。
+
+内部虚拟地址的挑战
+尽管ReadProcessMemory和memcpy都可以用于操作内存，但是在进程内部的虚拟地址上获取数据可能是毫无意义的。这是因为每个进程都有自己的虚拟地址空间，这些地址空间是相互隔离的。因此，一个进程中的指针在另一个进程中可能没有意义，或者可能指向完全不同的数据。
+
+此外，虚拟地址并不总是对应于实际的物理内存。操作系统使用虚拟内存技术，将虚拟地址映射到物理内存。这意味着，即使你有一个进程的虚拟地址，你也不能直接访问它对应的物理内存。你需要通过操作系统提供的机制，如ReadProcessMemory或memcpy，来访问这些内存
 ### 注意
 编译环境:Visual Studio 2022 Profresional.  
 
