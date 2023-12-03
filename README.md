@@ -1,3 +1,4 @@
+# English
 # SetThreadContextCall
 Thread hijacking involves seizing control of a running thread in order to execute custom code. This technique is often used in low-level programming or hacking scenarios. One method of thread hijacking is through the use of the `Call` function.
 The `Call` function allows the hijacker to redirect the execution flow of a target thread by modifying its instruction pointer (IP). The hijacker first suspends the target thread to ensure safe manipulation of its state. Then, it alters the IP to point to a custom code block or function.
@@ -53,6 +54,7 @@ The Project is provided without any express or implied warranties, including but
 Under no circumstances shall the developer be liable for any direct, indirect, incidental, special, or consequential damages resulting from the use of the Project, including but not limited to loss of business profits, whether arising from contract, tort, or other legal theories, even if the developer has been advised of the possibility of such damages.
 
 By using the Project, you acknowledge that you have read and agree to comply with this disclaimer. If you do not agree with this disclaimer, please do not use the Project. The developer reserves the right to change this disclaimer at any time without notice.
+# Japaness
 ### スレッドコンテキストコール
 スレッドハイジャックは、カスタムコードを実行するために実行中のスレッドを制御する技術です。この技術は、低レベルのプログラミングやハッキングのシナリオでよく使用されます。スレッドハイジャックの一つの方法は、Call関数の使用です。 Call関数は、ハイジャッカーが指示ポインタ（IP）を変更してターゲットスレッドの実行フローをリダイレクトすることを可能にします。ハイジャッカーはまず、ターゲットスレッドの状態を安全に操作するためにターゲットスレッドを一時停止します。次に、IPをカスタムコードブロックまたは関数を指すように変更します。 スレッドが再開されると、元の指示ではなくカスタムコードを実行し始めます。これにより、ハイジャッカーは自身のロジックをターゲットスレッドの実行フローに注入することができます。カスタムコードは、ログの記録、メモリの変更、または悪意のある操作の実行などのアクションを実行することができます。 Callを使用したスレッドハイジャッキングは強力で、潜在的に危険な技術であることに注意が必要です。アセンブリ言語、スレッド管理、システム内部の深い理解が必要です。また、スレッドハイジャッキングの無許可の使用は、違法であり、セキュリティの慣行に反すると見なされる可能性があります。 この情報を責任を持って、教育目的のみで使用してください。
 
@@ -68,6 +70,7 @@ memcpyは、メモリ内のバイトをコピーするための標準的なCラ�
 内部仮想アドレスの課題 ReadProcessMemoryとmemcpyの両方がメモリ操作に使用できる一方で、プロセス内の仮想アドレスからデータを取得することは無意味である可能性があります。これは、各プロセスが独自の仮想アドレス空間を持ち、これらのアドレス空間が互いに隔離されているためです。したがって、あるプロセスのポインタは、別のプロセスでは意味をなさないか、完全に異なるデータを指す可能性があります。
 
 さらに、仮想アドレスは常に実際の物理メモリに対応しているわけではありません。オペレーティングシステムは仮想メモリ技術を使用して、仮想アドレスを物理メモリにマッピングします。これは、プロセスの仮想アドレスを持っていても、その対応する物理メモリに直接アクセスすることはできないことを意味します。このメモリにアクセスするためには、ReadProcessMemoryやmemcpyなど、オペレーティングシステムが提供するメカニズムを使用する必要があります。この説明が役立つことを願っています！
+# Chinese
 # SetThreadContextCall
 线程劫持，是一种黑客的绝技，能够操纵运行中的线程，让它们按照自己的意志行事。这种技术需要精通汇编语言，熟悉线程管理和系统内核。其中一种常用的方法，就是利用Call函数，改变目标线程的执行方向。 Call函数的作用，就是让目标线程跳转到一个新的地址，执行那里的代码。劫持者要先暂停目标线程，才能安全地修改它的状态。然后，他就可以把目标线程的指令指针（IP），也就是它的下一步行动，指向自己准备好的代码块或函数。 当目标线程恢复运行时，它就会发现自己不知不觉地走上了一条不归路。它开始执行劫持者的代码，而不是原本的指令。这样，劫持者就可以在目标线程的执行流中植入自己的逻辑。他可以利用这个机会，做一些记录、修改内存或执行恶意操作等事情。 使用Call进行线程劫持，是一种非常强大但也非常危险的技术。它可以让劫持者在不被察觉的情况下，对目标线程进行任意的操控。但是，这种技术也可能违反法律和安全规范，造成严重的后果。 请您谨慎地使用这些信息，仅用于学习和研究。  
 
