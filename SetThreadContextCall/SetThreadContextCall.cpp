@@ -532,13 +532,15 @@ class Process :public SingleTon<Process> {//Singleton
     void preprocessparameter(LPVOID& arg);//process LPVOID parameter
     template<typename T>
     void ProcessPtr(T& ptr) {
-        int Size = sizeof(T);//get size
-        auto p = make_Shared<BYTE>(Size, m_hProcess);
-        if (p) {
-            m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory
-            _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer
-            maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address
-            ptr = (T)p.raw();//set parameter to allocated address
+        if (ptr) {
+            int Size = sizeof(T);//get size
+            auto p = make_Shared<BYTE>(Size, m_hProcess);
+            if (p) {
+                m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory
+                _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer
+                maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address
+                ptr = (T)p.raw();//set parameter to allocated address
+            }
         }
     }
 public:
