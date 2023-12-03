@@ -2,7 +2,7 @@
 #include <Windows.h>
 #include <Zydis/Zydis.h>//through vcpkg install Zydis:x64-windows:vcpkg.exe install Zydis:x64-windows-static.Not intall vcpkg can download from git
 #include <TlHelp32.h>//zydis is not default install in vcpkg if you want to use x86 vcpkg install Zydis:x86-windows-static
-//#pragma comment(lib,"Zydis.lib")//vcpkg use static lib
+#pragma comment(lib,"Zydis.lib")//vcpkg use static lib
 #include <atomic>
 #include <algorithm>
 #include <mutex>
@@ -508,7 +508,7 @@ class Process :public SingleTon<Process> {//Singleton
     template<typename T, typename ...Args>
     void preprocess(T& arg, Args&...args) {//partially specialized template
         if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, const wchar_t*>) preprocessparameter(arg);
-        if (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>)ProcessPtr(arg);
+        if constexpr (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>&&!std::is_same_v<T, const char*> &&! std::is_same_v<T, const wchar_t*>)ProcessPtr(arg);
         if constexpr (sizeof...(args) > 0)preprocess(args...);
     }
     template<class T, typename ...Args>
@@ -523,7 +523,6 @@ class Process :public SingleTon<Process> {//Singleton
             LPVOID OriginAddr = iter->second;//original address
             _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address
         }
-
     }
     template<typename T>
     void preprocessparameter(T& arg) {}
@@ -788,8 +787,7 @@ int main()
 {
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-    MEMORY_BASIC_INFORMATION        mbi;
-    std::cout << Process.SetContextCall(VirtualQuery, (LPVOID)0X142670D80, &mbi, sizeof(mbi)).get();//call GetCurrentProcessId
+    std::cout << Process.SetContextCall(MessageBoxA, TONULL<HWND>(), "msg", "ok", MB_OK).get() << std::endl;
     return 0;
 }
 
