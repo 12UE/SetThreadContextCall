@@ -114,6 +114,11 @@ UDWORD GetLength(BYTE* _buffer, UDWORD _length = 65535) {//Get the length of the
     }
     return length;
     }
+template<class T1, class ...Args>struct has_type { static constexpr bool value = false; };
+template<class T1, class T2, class ...Args>struct has_type<T1, T2, Args...> { static constexpr bool value = has_type<T1, T2>::value || has_type<T1, Args...>::value; };
+template<class T1, class T2>struct has_type<T1, T2> { static constexpr bool value = false; };
+template<class T>struct has_type<T, T> { static constexpr bool value = true; };
+template<class T1, class ...Args>constexpr bool has_type_v = has_type<T1, Args...>::value;
 template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer
 template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer
 template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * str2) {//ignore case compare ignore type wchar_t wstring or char string
@@ -205,12 +210,12 @@ T ThreadFunction(void* param) noexcept {
     auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
     auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
     //加载OpenEventA
-    auto hEvent = pLoadLibrary(threadData->funcname[0]);
-    auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
+    auto ntdll = pLoadLibrary(threadData->funcname[0]);
+    auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
     //打开事件
     auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
     //设置事件
-    auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+    auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);
     pSetEvent(hEventHandle);
     return threadData->retdata;
 }
@@ -319,7 +324,10 @@ public:
     }
     //关闭线程句柄  close thread handle
     ~Thread() {
-        if (m_bAttached)CloseHandle(m_hThread);
+        if (m_bAttached) {
+            CloseHandle(m_hThread);
+            m_hThread = NULL;
+        }
     }
     //获取线程句柄  get thread handle
     HANDLE GetHandle() { return m_hThread; }
@@ -491,6 +499,8 @@ public:
         return m_vector.end();
     }
 };
+#define POINTER_READ 0
+#define POINTER_WRITE 1
 template<class T>
 inline ThreadSafeVector<T> operator+(const ThreadSafeVector<T>&lhs, const ThreadSafeVector<T>&rhs) {
     ThreadSafeVector<T> result;
@@ -502,13 +512,14 @@ inline ThreadSafeVector<T> operator+(const ThreadSafeVector<T>&lhs, const Thread
 class Process :public SingleTon<Process> {//Singleton
     HANDLE m_hProcess = INVALID_HANDLE_VALUE;
     DWORD m_pid;//process id
+    int m_RunningMode = POINTER_READ;
     std::atomic_bool m_bAttached;//atomic bool
     ThreadSafeVector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory
     std::unordered_map<LPVOID, LPVOID> maptoorigin;//map for save original address and allocated address, key is allocated address value is original address
     template<typename T, typename ...Args>
     void preprocess(T& arg, Args&...args) {//partially specialized template
-        if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, const wchar_t*>) preprocessparameter(arg);
-        if constexpr (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>&&!std::is_same_v<T, const char*> &&! std::is_same_v<T, const wchar_t*>)ProcessPtr(arg);
+        if constexpr (has_type_v<T,const char*,const wchar_t *>) preprocessparameter(arg);
+        if constexpr (std::is_pointer_v<T> && !has_type_v<T,LPVOID,LPCVOID,const char*,const wchar_t*>)ProcessPtr(arg);
         if constexpr (sizeof...(args) > 0)preprocess(args...);
     }
     template<class T, typename ...Args>
@@ -521,7 +532,9 @@ class Process :public SingleTon<Process> {//Singleton
         auto iter = maptoorigin.find((LPVOID)ptr);//find original address
         if (iter != maptoorigin.end()) {
             LPVOID OriginAddr = iter->second;//original address
-            _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address
+            if (m_RunningMode == POINTER_READ){
+                _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address
+            }
         }
     }
     template<typename T>
@@ -537,7 +550,7 @@ class Process :public SingleTon<Process> {//Singleton
             if (p) {
                 m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory
                 _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer
-                maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address
+                if(m_RunningMode==POINTER_READ)maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address
                 ptr = (T)p.raw();//set parameter to allocated address
             }
         }
@@ -551,6 +564,9 @@ public:
             m_hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_pid);
             m_bAttached = true;
         }
+    }
+    void ChangeMode(int Mode) {
+        m_RunningMode = Mode;
     }
     //readapi
     ULONG _ReadApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//ReadProcessMemory
