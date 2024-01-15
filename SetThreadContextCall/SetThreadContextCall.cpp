@@ -176,6 +176,7 @@ public:
     char funcname[3][MAX_PATH];
     LPVOID pFunc[2];
 };
+
 template <class Fn>
 class ThreadData<Fn, void> {
 public:
