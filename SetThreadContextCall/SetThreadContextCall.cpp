@@ -1,8 +1,6 @@
 #include <iostream>
 #include <Windows.h>
-#include <Zydis/Zydis.h>//through vcpkg install Zydis:x64-windows:vcpkg.exe install Zydis:x64-windows-static.Not intall vcpkg can download from git
 #include <TlHelp32.h>//zydis is not default install in vcpkg if you want to use x86 vcpkg install Zydis:x86-windows-static
-#pragma comment(lib,"Zydis.lib")//vcpkg use static lib
 #include <atomic>
 #include <algorithm>
 #include <mutex>
@@ -96,24 +94,33 @@ public:
 
 };
 template<class T>Shared_Ptr make_Shared(size_t nsize, HANDLE hprocess) { return Shared_Ptr(sizeof(T) * nsize, hprocess); }
-
-UDWORD GetLength(BYTE* _buffer, UDWORD _length = 65535) {//Get the length of the function default 65535 because the function is not so long
-    ZyanU64 runtime_address = (ZyanU64)_buffer;
-    ZyanUSize offset = 0;
-    ZydisDisassembledInstruction instruction{};
-    int length = 0;
-#ifdef _WIN64
-    while (ZYAN_SUCCESS(ZydisDisassembleIntel(ZYDIS_MACHINE_MODE_LONG_64, runtime_address, _buffer + offset, _length - offset, &instruction))) {//disassemble
-#else
-    while (ZYAN_SUCCESS(ZydisDisassembleIntel(ZYDIS_MACHINE_MODE_LONG_COMPAT_32, runtime_address, _buffer + offset, _length - offset, &instruction))) {//disassemble
-#endif // !_WIN64
-        offset += instruction.info.length;
-        runtime_address += instruction.info.length;//add instruction length
-        length += instruction.info.length;//add instruction length
-        if (instruction.info.mnemonic == ZYDIS_MNEMONIC_RET) break;
+template<class BinFunc>
+inline size_t GetFunctionSize(const BinFunc& func) {
+    auto p = (PBYTE)func;
+    for (int i = 0, len = 0; i < 4096; i++) {
+        if (p[i] == 0xC2) {
+            len = i;
+            while (true) {
+                len += 3;
+                if (p[len] == 0xCC || (p[len] == 0x0 && p[len + 1] == 0x0))return len;
+                len = 0;
+                break;
+            }
+        }
+        if (p[i] == 0xC3) {
+            len = i;
+            while (true) {
+                len++;
+                if ((p[len] == 0xCC && (p[len + 1] == 0 && p[len + 2] == 0 && p[len + 3] == 0 && p[len + 4] == 0 && p[len + 5] == 0)))return len;
+                if (p[len] == 0xFF || p[len] == 0xE9 || p[len] == 0xEB) return len;
+                if ((p[len] == 0xCC && (p[len + 1] >= 0x48)))return len;
+                len = 0;
+                break;
+            }
+        }
     }
-    return length;
-    }
+    return (size_t)0;
+}
 template<class T1, class ...Args>struct has_type { static constexpr bool value = false; };
 template<class T1, class T2, class ...Args>struct has_type<T1, T2, Args...> { static constexpr bool value = has_type<T1, T2>::value || has_type<T1, Args...>::value; };
 template<class T1, class T2>struct has_type<T1, T2> { static constexpr bool value = false; };
@@ -128,15 +135,13 @@ template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * 
     if constexpr (!std::is_same_v<remove_const_pointer_t<Tx>, wchar_t>) {
         strtemp = str1;
         wstr1 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring
-    }
-    else {
+    }else {
         wstr1 = str1;
     }
     if constexpr (!std::is_same_v<remove_const_pointer_t<Ty>, wchar_t>) {
         strtemp = str2;
         wstr2 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring
-    }
-    else {
+    }else {
         wstr2 = str2;
     }
     std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower
@@ -667,7 +672,7 @@ public:
             threadData.fn = _Fx;
             threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters
             auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address
-            int length = GetLength((BYTE*)pFunction);//get function length
+            int length = GetFunctionSize((BYTE*)pFunction);//get function length
             auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
             m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory
             _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function
@@ -724,7 +729,7 @@ public:
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
             threadData.fn = _Fx;
             auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType>;//get function address
-            int length = GetLength((BYTE*)pFunction);//get function length
+            int length = GetFunctionSize((BYTE*)pFunction);//get function length
             auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
             m_vecAllocMem.emplace_back(lpFunction);
             _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory
