@@ -176,6 +176,14 @@ public:
     char funcname[3][MAX_PATH];
     LPVOID pFunc[2];
 };
+template <class Fn>
+class ThreadData<Fn, void> {
+public:
+    Fn fn;//function
+    char eventname[MAX_PATH];
+    char funcname[3][MAX_PATH];
+    LPVOID pFunc[2];
+};
 template <class Fn, class T, class ...Args>
 class ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from ThreadData
 public:
@@ -499,6 +507,10 @@ public:
         return m_vector.end();
     }
 };
+template<typename T,typename ...Args>
+concept Callable = requires(T t,Args...args) {
+    { t(args...) };
+};
 #define POINTER_READ 0
 #define POINTER_WRITE 1
 template<class T>
@@ -744,9 +756,9 @@ public:
         static std::false_type test(...);
         static constexpr bool value = decltype(test<T>(nullptr))::value;//is callable
     };
-    template<class _Fn, class ...Arg>
-    decltype(auto) SetContextCall(__in _Fn&& _Fx, __in Arg&& ...args) {
-        static_assert(!is_callable<_Fn>::value, "uncallable!");
+    
+    decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) {
+        static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");
         auto retdata = SetContextCallImpl(_Fx, args...);
         using RetType = decltype(retdata);
         std::promise<RetType> promise{};
