@@ -793,7 +793,6 @@ public:
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
         return threadData.retdata;//return value
     }
-
     template <typename T>
     struct is_callable {
         template <typename U>
@@ -860,7 +859,6 @@ public:
         if (!m_bAttached) return RetType();
         Thread _thread{};
         CONTEXT _ctx{};
-        UDWORD _paramAddr = 0;
         ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
         strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
