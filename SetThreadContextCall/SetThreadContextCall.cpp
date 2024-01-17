@@ -173,34 +173,29 @@ public:
 #pragma pack(push)
 #pragma pack(1)
 template<class Fn, class T>
-class ThreadData {
+class ThreadDataBase {
 public:
     Fn fn;//function
-    T retdata;//return data
     char eventname[MAX_PATH];
     char funcname[3][MAX_PATH];
     LPVOID pFunc[2];
 };
+template<class Fn, class T>
+class ThreadData:public ThreadDataBase<Fn,T> {
+public:
+    T retdata;//return data
+};
 
 template <class Fn>
-class ThreadData<Fn, void> {
+class ThreadData<Fn, void>:public ThreadDataBase<Fn, void> {
 public:
-    Fn fn;//function
-    char eventname[MAX_PATH];
-    char funcname[3][MAX_PATH];
-    LPVOID pFunc[2];
 };
 template <class Fn, class T, class ...Args>
 class ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from ThreadData
 public:
     std::tuple<Args...> params;//parameters
-    std::size_t TupleSize() {
-        return sizeof...(Args);
-    }
-    int GetParamsSize() {
-        return (sizeof(Args) + ...);
-    }
 };
+
 #pragma pack(pop)//恢复原始pack restore original pack
 typedef HMODULE(WINAPI* PLOADLIBRARYA)(
     LPCSTR lpLibFileName
@@ -233,6 +228,21 @@ T ThreadFunction(void* param) noexcept {
     pSetEvent(hEventHandle);
     return threadData->retdata;
 }
+template <class Fn, class T>
+void ThreadFunctionNoReturn(void* param) noexcept {
+    auto threadData = static_cast<ThreadData<Fn, T>*>(param);
+    threadData->fn();
+    auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
+    auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+    //加载OpenEventA
+    auto ntdll = pLoadLibrary(threadData->funcname[0]);
+    auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
+    //打开事件
+    auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+    //设置事件
+    auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);
+    pSetEvent(hEventHandle);
+}
 template <class Fn, class T, class... Args>
 decltype(auto) ThreadFunction2(void* param) noexcept {
     auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
@@ -251,6 +261,23 @@ decltype(auto) ThreadFunction2(void* param) noexcept {
         auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
         pSetEvent(hEventHandle);
         return ret;
+}
+template <class Fn, class T, class... Args>
+void ThreadFunction2NoReturn(void* param) noexcept {
+    auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
+    [threadData](auto index) {
+        std::apply(threadData->fn, threadData->params);
+        }(std::make_index_sequence<sizeof...(Args)>{});
+        auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
+        auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+        //加载OpenEventA
+        auto hEvent = pLoadLibrary(threadData->funcname[0]);
+        auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
+        //打开事件
+        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+        //设置事件
+        auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+        pSetEvent(hEventHandle);
 }
 typedef class DATA_CONTEXT {
 public:
@@ -557,9 +584,24 @@ class Process :public SingleTon<Process> {//Singleton
     }
     template<typename T>
     void preprocessparameter(T& arg) {}
-    void preprocessparameter(const char*& arg);//process const char* parameter
-    void preprocessparameter(const wchar_t*& arg);//process const wchar_t* parameter
-    void preprocessparameter(LPVOID& arg);//process LPVOID parameter
+    void preprocessparameter(const char*& arg) {
+        auto nlen = (int)strlen(arg) + 1;
+        auto p = make_Shared<char>(nlen * sizeof(char), m_hProcess);
+        if (p) {
+            m_vecAllocMem.push_back(p);
+            _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
+            arg = (const char*)p.raw();
+        }
+    }//process const char* parameter
+    void preprocessparameter(const wchar_t*& arg){
+        auto nlen = (int)wcslen(arg) + 1;
+        auto p = make_Shared<wchar_t>(nlen * sizeof(wchar_t), m_hProcess);
+        if (p) {
+            m_vecAllocMem.push_back(p);
+            _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(wchar_t));
+            arg = (const wchar_t*)p.raw();
+        }
+    }//process const wchar_t* parameter
     template<typename T>
     void ProcessPtr(T& ptr) {
         if (ptr) {
@@ -656,7 +698,7 @@ public:
         auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
-        auto pGetProcAddress = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetProcAddress");
+        auto pGetProcAddress = (LPVOID)GetProcAddress;
         //设置函数地址
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
@@ -715,7 +757,7 @@ public:
         auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
-        auto pGetProcAddress = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetProcAddress");
+        auto pGetProcAddress = (LPVOID)GetProcAddress;
         //设置函数地址
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
@@ -754,6 +796,7 @@ public:
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
         return threadData.retdata;//return value
     }
+
     template <typename T>
     struct is_callable {
         template <typename U>
@@ -762,7 +805,13 @@ public:
         static std::false_type test(...);
         static constexpr bool value = decltype(test<T>(nullptr))::value;//is callable
     };
-    
+    template <class _Fn>
+    void SetContextCallNoReturn(_Fn&& _Fx) {
+    }
+    template<class _Fn, class ...Arg>
+    void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) {
+    }
+
     decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) {
         static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");
         auto retdata = SetContextCallImpl(_Fx, args...);
@@ -792,27 +841,6 @@ private:
         return pid;
     }
 };
-void Process::preprocessparameter(const char*& arg) {//process parameter
-    auto nlen = (int)strlen(arg) + 1;
-    auto p = make_Shared<char>(nlen * sizeof(char), m_hProcess);
-    if (p) {
-        m_vecAllocMem.push_back(p);
-        _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
-        arg = (const char*)p.raw();
-    }
-}
-void Process::preprocessparameter(const wchar_t*& arg) {//process parameter
-    auto nlen = (int)wcslen(arg) + 1;
-    auto p = make_Shared<wchar_t>(nlen * sizeof(wchar_t), m_hProcess);
-    if (p) {
-        m_vecAllocMem.push_back(p);
-        _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(wchar_t));
-        arg = (const wchar_t*)p.raw();
-    }
-}
-void Process::preprocessparameter(LPVOID & arg)
-{
-}
 template<class T>
 T TONULL() {
     return  reinterpret_cast<T>(0);
