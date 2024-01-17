@@ -822,6 +822,10 @@ public:
         ClearMemory();
         return fut;
     }
+    template<class T>
+    static T TONULL() {
+        return  reinterpret_cast<T>(0);
+    }
 private:
     DWORD GetProcessIdByName(const char* processName) {//get process id by name
         DWORD pid = 0;
@@ -841,15 +845,12 @@ private:
         return pid;
     }
 };
-template<class T>
-T TONULL() {
-    return  reinterpret_cast<T>(0);
-}
+
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-    std::cout << Process.SetContextCall(MessageBoxA, TONULL<HWND>(), "msg", "ok", MB_OK).get() << std::endl;
+    std::cout << Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "msg", "ok", MB_OK).get() << std::endl;
     return 0;
 }
 
