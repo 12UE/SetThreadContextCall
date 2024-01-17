@@ -91,7 +91,6 @@ public:
     operator bool() {
         return BaseAddress != nullptr;
     }
-
 };
 template<class T>Shared_Ptr make_Shared(size_t nsize, HANDLE hprocess) { return Shared_Ptr(sizeof(T) * nsize, hprocess); }
 template<class BinFunc>
@@ -185,7 +184,6 @@ class ThreadData:public ThreadDataBase<Fn,T> {
 public:
     T retdata;//return data
 };
-
 template <class Fn>
 class ThreadData<Fn, void>:public ThreadDataBase<Fn, void> {
 public:
@@ -195,7 +193,6 @@ class ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from T
 public:
     std::tuple<Args...> params;//parameters
 };
-
 #pragma pack(pop)//»Ö¸´Ô­Ê¼pack restore original pack
 typedef HMODULE(WINAPI* PLOADLIBRARYA)(
     LPCSTR lpLibFileName
