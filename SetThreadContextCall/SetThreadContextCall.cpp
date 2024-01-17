@@ -944,13 +944,12 @@ private:
         return pid;
     }
 };
-void helle(int a) {
-}
+
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-    Process.SetContextCallNoReturn(helle,0);
+    Process.SetContextCallNoReturn(MessageBoxA,Process::TONULL<HWND>(),"MSG","CAP",MB_OK);
     return 0;
 }
 
