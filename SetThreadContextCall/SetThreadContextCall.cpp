@@ -806,10 +806,113 @@ public:
         static constexpr bool value = decltype(test<T>(nullptr))::value;//is callable
     };
     template <class _Fn>
-    void SetContextCallNoReturn(_Fn&& _Fx) {
+    void SetContextCallNoReturnImpl(_Fn&& _Fx) {
+        using RetType = void;
+        Thread _thread{};
+        CONTEXT _ctx{};
+        UDWORD _paramAddr = 0;
+        ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data
+        strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
+        strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
+        strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
+        strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
+        //创建事件
+        auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
+        //获取地址
+        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
+        auto pGetProcAddress = (LPVOID)GetProcAddress;
+        //设置函数地址
+        threadData.pFunc[0] = (LPVOID)pLoadLibrary;
+        threadData.pFunc[1] = (LPVOID)pGetProcAddress;
+        EnumThread([&](auto& te32)->int {
+            auto thread = Thread(te32);//construct thread
+            thread.Suspend();//suspend thread
+            auto ctx = thread.GetContext();//get context
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext
+            m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory
+            DATA_CONTEXT dataContext{};
+            memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
+            threadData.fn = _Fx;
+            auto pFunction = &ThreadFunctionNoReturn<std::decay_t<_Fn>, RetType>;//get function address
+            int length = GetFunctionSize((BYTE*)pFunction);//get function length
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
+            m_vecAllocMem.emplace_back(lpFunction);
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory
+            dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
+            dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
+            using parametertype = decltype(threadData);//get parameter type
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
+            m_vecAllocMem.emplace_back(lpParameter);
+            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory
+            dataContext.lpParameter = (PBYTE)lpParameter.raw();
+            _paramAddr = (UDWORD)lpParameter.raw();
+            _ctx = ctx;//store context
+            ctx.XIP = (UDWORD)lpShell.raw();//set xip
+            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory
+            thread.SetContext(ctx);//set context
+            thread.Resume();//resume thread
+            _thread = std::move(thread);//store thread
+            return EnumStatus_Break;
+            });
+        WaitForSingleObject(hEvent, INFINITE);//wait event
+        CloseHandle(hEvent);//close event
     }
     template<class _Fn, class ...Arg>
     void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) {
+        using RetType = void;
+        if (!m_bAttached) return RetType();
+        Thread _thread{};
+        CONTEXT _ctx{};
+        UDWORD _paramAddr = 0;
+        ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
+        strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
+        strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
+        strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
+        strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
+        //创建事件
+        auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
+        //获取地址
+        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
+        auto pGetProcAddress = (LPVOID)GetProcAddress;
+        //设置函数地址
+        threadData.pFunc[0] = (LPVOID)pLoadLibrary;
+        threadData.pFunc[1] = (LPVOID)pGetProcAddress;
+        EnumThread([&](auto& te32)->int {
+            auto thread = Thread(te32);//construct thread
+            thread.Suspend();//suspend thread
+            auto ctx = thread.GetContext();//get context
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory
+            m_vecAllocMem.emplace_back(lpShell);//
+            DATA_CONTEXT dataContext{};
+            memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
+            if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter
+            threadData.fn = _Fx;
+            threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters
+            auto pFunction = &ThreadFunction2NoReturn<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address
+            int length = GetFunctionSize((BYTE*)pFunction);//get function length
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
+            m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function
+            dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
+            dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
+            using parametertype = decltype(threadData);
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
+            m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory
+            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter
+            dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address
+            _paramAddr = (UDWORD)lpParameter.raw();//set parameter address
+            _ctx = ctx;//save context
+            ctx.XIP = (UDWORD)lpShell.raw();//set xip
+            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext
+            thread.SetContext(ctx);//set context
+            thread.Resume();//resume thread
+            _thread = std::move(thread);//move thread
+            return EnumStatus_Break;
+            });
+        WaitForSingleObject(hEvent, INFINITE);//wait event
+        CloseHandle(hEvent);//close event
+        if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
+        maptoorigin.clear();//clear map
     }
 
     decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) {
@@ -845,12 +948,13 @@ private:
         return pid;
     }
 };
-
+void helle(int a) {
+}
 int main()
 {
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-    std::cout << Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "msg", "ok", MB_OK).get() << std::endl;
+    Process.SetContextCallNoReturn(helle,0);
     return 0;
 }
 
