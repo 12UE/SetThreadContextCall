@@ -858,6 +858,7 @@ public:
         using RetType = void;
         if (!m_bAttached) return RetType();
         Thread _thread{};
+        UDWORD _paramAddr = 0;
         CONTEXT _ctx{};
         ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
         strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
