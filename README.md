@@ -16,8 +16,6 @@ memcpy是一个标准的C库函数，用于在内存中复制字节，通常用�
 此外，虚拟地址并不总是对应于实际的物理内存。操作系统使用虚拟内存技术，将虚拟地址映射到物理内存。这意味着，即使你有一个进程的虚拟地址，你也不能直接访问它对应的物理内存。你需要通过操作系统提供的机制，如ReadProcessMemory或memcpy，来访问这些内存
 ### 注意
 编译环境:Visual Studio 2022 Profresional.  
-
-外部支持库zydis (推荐用vcpkg安装使用静态库). 
 ## 使用方法
 ```C++
 int main()
@@ -58,8 +56,6 @@ Please use this information responsibly and for educational purposes only.
 ### notice
 Build Environment: Visual Studio 2022 Profresional.  
 
-External Support Library: Zydis .  
-
 Recommended to use Vcpkg to install and use the static library.  
 Process Virtual Address: The Challenges of Data Writing and Retrieval
 In computer science, memory management is a complex and critical field. The operating system needs to manage and allocate memory during runtime to ensure the smooth operation of programs. However, this process is not always intuitive, especially when it comes to internal pointer operations. This article will explore the ReadProcessMemory and memcpy functions, and why retrieving data from virtual addresses within a process may be meaningless.
@@ -88,7 +84,7 @@ By using the Project, you acknowledge that you have read and agree to comply wit
 スレッドハイジャックは、カスタムコードを実行するために実行中のスレッドを制御する技術です。この技術は、低レベルのプログラミングやハッキングのシナリオでよく使用されます。スレッドハイジャックの一つの方法は、Call関数の使用です。 Call関数は、ハイジャッカーが指示ポインタ（IP）を変更してターゲットスレッドの実行フローをリダイレクトすることを可能にします。ハイジャッカーはまず、ターゲットスレッドの状態を安全に操作するためにターゲットスレッドを一時停止します。次に、IPをカスタムコードブロックまたは関数を指すように変更します。 スレッドが再開されると、元の指示ではなくカスタムコードを実行し始めます。これにより、ハイジャッカーは自身のロジックをターゲットスレッドの実行フローに注入することができます。カスタムコードは、ログの記録、メモリの変更、または悪意のある操作の実行などのアクションを実行することができます。 Callを使用したスレッドハイジャッキングは強力で、潜在的に危険な技術であることに注意が必要です。アセンブリ言語、スレッド管理、システム内部の深い理解が必要です。また、スレッドハイジャッキングの無許可の使用は、違法であり、セキュリティの慣行に反すると見なされる可能性があります。 この情報を責任を持って、教育目的のみで使用してください。
 
 ### 注意
-ビルド環境：Visual Studio 2022 Professional。 外部サポートライブラリ：Zydis。 Vcpkgを使用して静的ライブラリをインストールおよび使用することを推奨します。
+ビルド環境：Visual Studio 2022 Professional。
 
 プロセス仮想アドレス：データの書き込みと取得の課題 コンピュータ科学では、メモリ管理は複雑で重要な分野です。オペレーティングシステムは、プログラムのスムーズな動作を確保するために、ランタイム中にメモリを管理および割り当てる必要があります。しかし、このプロセスは常に直感的ではなく、特に内部ポインタ操作に関してはそうではありません。この記事では、ReadProcessMemoryとmemcpy関数を探り、プロセス内の仮想アドレスからデータを取得することが無意味である可能性について説明します。
 
