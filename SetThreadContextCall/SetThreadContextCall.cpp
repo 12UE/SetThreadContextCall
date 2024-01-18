@@ -1,6 +1,6 @@
 #include <iostream>
 #include <Windows.h>
-#include <TlHelp32.h>//zydis is not default install in vcpkg if you want to use x86 vcpkg install Zydis:x86-windows-static
+#include <TlHelp32.h>
 #include <atomic>
 #include <algorithm>
 #include <mutex>
