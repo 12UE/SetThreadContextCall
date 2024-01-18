@@ -152,8 +152,23 @@ template<typename T >
 class SingleTon {
 private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
+    std::atomic_bool bflag=false;
 public:
-    SingleTon() = default;
+    SingleTon() {
+        //按类名的typeid作为事件名
+        std::string eventname = typeid(T).name();
+        //创建互斥量
+        HANDLE hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
+        if (hEvent == NULL) {
+            throw std::exception("CreateEventA failed");
+        }
+        //检查互斥量是否已经被创建
+        if (GetLastError() == ERROR_ALREADY_EXISTS) {
+            bflag = true;
+        }else {
+            bflag = false;
+        }
+    }
     template <class... Args>
     static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter
         static std::once_flag flag{};
@@ -161,9 +176,13 @@ public:
         if (!instance) {
             std::call_once(flag, [&]() {//call once
                 instance = std::make_shared<T>(args...);//element constructor through parameters
-                });
+            });
         }
-        return *instance.get();//return instance
+        if (instance->bflag) {
+            throw std::exception("SingleTon has been created");
+        }else {
+            return *instance.get();
+        }
     }
 };
 #define EnumStatus_Continue (int)0
@@ -949,7 +968,7 @@ int main()
 {
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
-    Process.SetContextCallNoReturn(MessageBoxA,Process::TONULL<HWND>(),"MSG","CAP",MB_OK);
+    std::cout<<Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
     return 0;
 }
 
