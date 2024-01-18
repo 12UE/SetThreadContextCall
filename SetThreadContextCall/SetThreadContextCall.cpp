@@ -123,28 +123,28 @@ inline size_t GetFunctionSize(const BinFunc& func) {
 template<class T1, class ...Args>struct has_type { static constexpr bool value = false; };
 template<class T1, class T2, class ...Args>struct has_type<T1, T2, Args...> { static constexpr bool value = has_type<T1, T2>::value || has_type<T1, Args...>::value; };
 template<class T1, class T2>struct has_type<T1, T2> { static constexpr bool value = false; };
-template<class T>struct has_type<T, T> { static constexpr bool value = true; };
+template<class T>struct has_type<T, T> { static constexpr bool value = true; }; //same type 同类型 check multiple type 检查多个类型
 template<class T1, class ...Args>constexpr bool has_type_v = has_type<T1, Args...>::value;
-template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer
-template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer
-template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * str2) {//ignore case compare ignore type wchar_t wstring or char string
+template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer  移除const指针
+template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer   移除const指针
+template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * str2) {//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
     if (!str1 || !str2) throw std::exception("str1 or str2 is nullptr");
     std::wstring wstr1{}, wstr2{};
     std::string  strtemp{};
     if constexpr (!std::is_same_v<remove_const_pointer_t<Tx>, wchar_t>) {
         strtemp = str1;
-        wstr1 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring
+        wstr1 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring 转换为wstring
     }else {
         wstr1 = str1;
     }
     if constexpr (!std::is_same_v<remove_const_pointer_t<Ty>, wchar_t>) {
         strtemp = str2;
-        wstr2 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring
+        wstr2 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring 转换为wstring
     }else {
         wstr2 = str2;
     }
-    std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower
-    std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower
+    std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower 转换为小写
+    std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
     return wstr1.compare(wstr2);
 }
 #define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&)=delete;TYPE(TYPE&&) = delete;void operator= (const TYPE&) = delete;void operator= (TYPE&&) = delete;
@@ -153,29 +153,30 @@ class SingleTon {
 private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
     std::atomic_bool bflag=false;
+    HANDLE hEvent = INVALID_HANDLE_VALUE;
 public:
     SingleTon() {
-        //按类名的typeid作为事件名
+        //按类名的typeid作为事件名 create event name by typeid
         std::string eventname = typeid(T).name();
-        //创建互斥量
-        HANDLE hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
-        if (hEvent == NULL) {
-            throw std::exception("CreateEventA failed");
-        }
-        //检查互斥量是否已经被创建
-        if (GetLastError() == ERROR_ALREADY_EXISTS) {
-            bflag = true;
-        }else {
-            bflag = false;
+        //创建互斥量 create event
+        hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
+        if (hEvent == NULL)throw std::exception("CreateEventA failed");
+        //检查互斥量是否已经被创建 check event is created
+        bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
+    }
+    ~SingleTon() {
+        if (hEvent != INVALID_HANDLE_VALUE) {
+            CloseHandle(hEvent);//关闭事件 close event
+            hEvent = INVALID_HANDLE_VALUE;//置为无效值 set invalid value
         }
     }
     template <class... Args>
-    static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter
+    static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
         static std::once_flag flag{};
         static std::shared_ptr<T> instance = nullptr;
         if (!instance) {
             std::call_once(flag, [&]() {//call once
-                instance = std::make_shared<T>(args...);//element constructor through parameters
+                instance = std::make_shared<T>(args...);//element constructor through parameters    通过参数构造元素
             });
         }
         if (instance->bflag) {
@@ -187,13 +188,13 @@ public:
 };
 #define EnumStatus_Continue (int)0
 #define EnumStatus_Break (int)1
-//保存原始pack save original pack
+//保存原始的对齐方式 save original align
 #pragma pack(push)
 #pragma pack(1)
 template<class Fn, class T>
 class ThreadDataBase {
 public:
-    Fn fn;//function
+    Fn fn;//function    函数
     char eventname[MAX_PATH];
     char funcname[3][MAX_PATH];
     LPVOID pFunc[2];
@@ -201,18 +202,18 @@ public:
 template<class Fn, class T>
 class ThreadData:public ThreadDataBase<Fn,T> {
 public:
-    T retdata;//return data
+    T retdata;//return data 返回值
 };
 template <class Fn>
 class ThreadData<Fn, void>:public ThreadDataBase<Fn, void> {
 public:
 };
 template <class Fn, class T, class ...Args>
-class ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from ThreadData
+class ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from ThreadData   线程数据结构继承自ThreadData
 public:
-    std::tuple<Args...> params;//parameters
+    std::tuple<Args...> params;//parameters   参数
 };
-#pragma pack(pop)//恢复原始pack restore original pack
+#pragma pack(pop)//恢复原始pack restore original pack   
 typedef HMODULE(WINAPI* PLOADLIBRARYA)(
     LPCSTR lpLibFileName
     );
@@ -234,12 +235,12 @@ T ThreadFunction(void* param) noexcept {
     threadData->retdata = threadData->fn();
     auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
     auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-    //加载OpenEventA
+    //加载OpenEventA    load OpenEventA
     auto ntdll = pLoadLibrary(threadData->funcname[0]);
     auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
-    //打开事件
+    //打开事件  open event
     auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-    //设置事件
+    //设置事件  set event
     auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);
     pSetEvent(hEventHandle);
     return threadData->retdata;
@@ -250,12 +251,12 @@ void ThreadFunctionNoReturn(void* param) noexcept {
     threadData->fn();
     auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
     auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-    //加载OpenEventA
+    //加载OpenEventA    load OpenEventA
     auto ntdll = pLoadLibrary(threadData->funcname[0]);
     auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
-    //打开事件
+    //打开事件  open event
     auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-    //设置事件
+    //设置事件  set event
     auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);
     pSetEvent(hEventHandle);
 }
@@ -268,12 +269,12 @@ decltype(auto) ThreadFunction2(void* param) noexcept {
         }(std::make_index_sequence<sizeof...(Args)>{});
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        //加载OpenEventA
+        //加载OpenEventA    load OpenEventA
         auto hEvent = pLoadLibrary(threadData->funcname[0]);
         auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
-        //打开事件
+        //打开事件  open event
         auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-        //设置事件
+        //设置事件  set event
         auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
         pSetEvent(hEventHandle);
         return ret;
@@ -286,12 +287,12 @@ void ThreadFunction2NoReturn(void* param) noexcept {
         }(std::make_index_sequence<sizeof...(Args)>{});
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        //加载OpenEventA
+        //加载OpenEventA    load OpenEventA
         auto hEvent = pLoadLibrary(threadData->funcname[0]);
         auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
-        //打开事件
+        //打开事件  open event
         auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-        //设置事件
+        //设置事件  set event
         auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
         pSetEvent(hEventHandle);
 }
@@ -352,7 +353,7 @@ public:
         m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
         m_bAttached = true;
     }
-    //从threadentry32构造 construct from threadentry32
+    //从threadentry32构造 construct from threadentry32  to open thread
     Thread(const THREADENTRY32& threadEntry) {
         m_dwThreadId = threadEntry.th32ThreadID;
         m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
@@ -557,7 +558,7 @@ public:
     }
 };
 template<typename T,typename ...Args>
-concept Callable = requires(T t,Args...args) {
+concept Callable = requires(T t,Args...args) { //check callable concept 检查可调用概念
     { t(args...) };
 };
 #define POINTER_READ 0
@@ -570,31 +571,31 @@ inline ThreadSafeVector<T> operator+(const ThreadSafeVector<T>&lhs, const Thread
     for (size_t i = 0; i < rhs.size(); i++)result.push_back(rhs[i]);
     return result;
 }
-class Process :public SingleTon<Process> {//Singleton
+class Process :public SingleTon<Process> {//Singleton   单例
     HANDLE m_hProcess = INVALID_HANDLE_VALUE;
-    DWORD m_pid;//process id
+    DWORD m_pid;//process id    进程id
     int m_RunningMode = POINTER_READ;
-    std::atomic_bool m_bAttached;//atomic bool
-    ThreadSafeVector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory
-    std::unordered_map<LPVOID, LPVOID> maptoorigin;//map for save original address and allocated address, key is allocated address value is original address
+    std::atomic_bool m_bAttached;//atomic bool  原子bool
+    ThreadSafeVector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory    保存分配的内存的vector
+    std::unordered_map<LPVOID, LPVOID> maptoorigin;//map for save original address and allocated address, key is allocated address value is original address    保存原始地址和分配地址的map，key是分配地址，value是原始地址
     template<typename T, typename ...Args>
-    void preprocess(T& arg, Args&...args) {//partially specialized template
+    void preprocess(T& arg, Args&...args) {//partially specialized template 部分特化模板
         if constexpr (has_type_v<T,const char*,const wchar_t *>) preprocessparameter(arg);
         if constexpr (std::is_pointer_v<T> && !has_type_v<T,LPVOID,LPCVOID,const char*,const wchar_t*>)ProcessPtr(arg);
         if constexpr (sizeof...(args) > 0)preprocess(args...);
     }
     template<class T, typename ...Args>
     void postprocess(T& arg, Args&...args) {
-        if (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>)PostprocessPtr(arg);//post process pointer
-        if constexpr (sizeof...(args) > 0)postprocess(args...);//keep process
+        if (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>)PostprocessPtr(arg);//post process pointer    后处理指针
+        if constexpr (sizeof...(args) > 0)postprocess(args...);//keep process   继续处理
     }
     template<typename T>
     void PostprocessPtr(T& ptr) {
-        auto iter = maptoorigin.find((LPVOID)ptr);//find original address
+        auto iter = maptoorigin.find((LPVOID)ptr);//find original address   查找原始地址
         if (iter != maptoorigin.end()) {
-            LPVOID OriginAddr = iter->second;//original address
+            LPVOID OriginAddr = iter->second;//original address   原始地址
             if (m_RunningMode == POINTER_READ){
-                _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address
+                _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address    从分配地址读取值到原始地址
             }
         }
     }
@@ -608,7 +609,7 @@ class Process :public SingleTon<Process> {//Singleton
             _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
             arg = (const char*)p.raw();
         }
-    }//process const char* parameter
+    }//process const char* parameter    处理const char*参数
     void preprocessparameter(const wchar_t*& arg){
         auto nlen = (int)wcslen(arg) + 1;
         auto p = make_Shared<wchar_t>(nlen * sizeof(wchar_t), m_hProcess);
@@ -617,23 +618,23 @@ class Process :public SingleTon<Process> {//Singleton
             _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(wchar_t));
             arg = (const wchar_t*)p.raw();
         }
-    }//process const wchar_t* parameter
+    }//process const wchar_t* parameter   处理const wchar_t*参数
     template<typename T>
     void ProcessPtr(T& ptr) {
         if (ptr) {
-            int Size = sizeof(T);//get size
+            int Size = sizeof(T);//get size of parameter    获取参数大小
             auto p = make_Shared<BYTE>(Size, m_hProcess);
             if (p) {
-                m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory
-                _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer
-                if(m_RunningMode==POINTER_READ)maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address
-                ptr = (T)p.raw();//set parameter to allocated address
+                m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory   emplace back到vector中避免内存泄漏可以通过clearmemory清除
+                _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer   写入值到分配地址，因为参数是指针
+                if(m_RunningMode==POINTER_READ)maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address   保存原始地址和分配地址
+                ptr = (T)p.raw();//set parameter to allocated address   设置参数为分配地址
             }
         }
     }
 public:
-    void Attach(const char* _szProcessName) {//attach process
-        //get process id
+    void Attach(const char* _szProcessName) {//attach process   附加进程
+        //get process id    获取进程id
         auto pid = GetProcessIdByName(_szProcessName);
         if (pid != 0) {
             m_pid = pid;
@@ -676,7 +677,7 @@ public:
         return 0;
     }
     template<class PRE>
-    void EnumThread(PRE pre) {//enum thread through snapshot
+    void EnumThread(PRE pre) {//enum thread through snapshot    通过快照枚举线程
         if (m_bAttached) {
             auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (hSnapshot != INVALID_HANDLE_VALUE) {
@@ -710,57 +711,57 @@ public:
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
-        //创建事件
+        //创建事件  create event
         auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-        //获取地址
+        //获取地址  get address
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
         auto pGetProcAddress = (LPVOID)GetProcAddress;
-        //设置函数地址
+        //设置函数地址  set function address
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
         EnumThread([&](auto& te32)->int {
-            auto thread = Thread(te32);//construct thread
-            thread.Suspend();//suspend thread
-            auto ctx = thread.GetContext();//get context
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory
+            auto thread = Thread(te32);//construct thread   构造线程
+            thread.Suspend();//suspend thread   暂停线程
+            auto ctx = thread.GetContext();//get context    获取上下文
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory   分配内存
             m_vecAllocMem.emplace_back(lpShell);//
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-            if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter
+            if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter  处理参数
             threadData.fn = _Fx;
-            threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters
-            auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address
-            int length = GetFunctionSize((BYTE*)pFunction);//get function length
-            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
-            m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory
-            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function
-            dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
-            dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
+            threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
+            auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address  获取函数地址
+            int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
+            m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
+            dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address  设置函数地址
+            dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
             using parametertype = decltype(threadData);
-            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
-            m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory
-            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter
-            dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address
-            _paramAddr = (UDWORD)lpParameter.raw();//set parameter address
-            _ctx = ctx;//save context
-            ctx.XIP = (UDWORD)lpShell.raw();//set xip
-            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext
-            thread.SetContext(ctx);//set context
-            thread.Resume();//resume thread
-            _thread = std::move(thread);//move thread
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
+            m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
+            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
+            dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
+            _paramAddr = (UDWORD)lpParameter.raw();//set parameter address  设置参数地址
+            _ctx = ctx;//save context   保存上下文
+            ctx.XIP = (UDWORD)lpShell.raw();//set xip   设置xip
+            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写入datacontext
+            thread.SetContext(ctx);//set context    设置上下文
+            thread.Resume();//resume thread   恢复线程
+            _thread = std::move(thread);//move thread   移动线程
             return EnumStatus_Break;
             });
-        WaitForSingleObject(hEvent, INFINITE);//wait event
-        CloseHandle(hEvent);//close event
-        if(maptoorigin.size()>0)postprocess(args...);//post process parameter
-        maptoorigin.clear();//clear map
-        _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
-        return threadData.retdata;//return value
+        WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
+        CloseHandle(hEvent);//close event   关闭事件
+        if(maptoorigin.size()>0)postprocess(args...);//post process parameter   后处理参数
+        maptoorigin.clear();//clear map  清除map
+        _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
+        return threadData.retdata;//return value    返回值
     }
     template <class _Fn>
     decltype(auto) SetContextCallImpl(_Fn&& _Fx) {
-        using RetType = std::common_type<decltype(_Fx())>::type;//return type is common type or not
-        if (!m_bAttached) return RetType();//return default value
+        using RetType = std::common_type<decltype(_Fx())>::type;//return type is common type or not 返回类型是常见类型还是不是
+        if (!m_bAttached) return RetType();//return default value   返回默认值
         Thread _thread{};
         CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
@@ -769,48 +770,48 @@ public:
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
-        //创建事件
+        //创建事件  create event
         auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-        //获取地址
+        //获取地址  get address
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
         auto pGetProcAddress = (LPVOID)GetProcAddress;
-        //设置函数地址
+        //设置函数地址  set function address
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
         EnumThread([&](auto& te32)->int {
-            auto thread = Thread(te32);//construct thread
-            thread.Suspend();//suspend thread
-            auto ctx = thread.GetContext();//get context
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext
-            m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory
+            auto thread = Thread(te32);//construct thread   构造线程
+            thread.Suspend();//suspend thread   暂停线程
+            auto ctx = thread.GetContext();//get context    获取上下文
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
+            m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
             threadData.fn = _Fx;
-            auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType>;//get function address
-            int length = GetFunctionSize((BYTE*)pFunction);//get function length
-            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
+            auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType>;//get function address 获取函数地址
+            int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
             m_vecAllocMem.emplace_back(lpFunction);
-            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory
-            dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
-            dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
-            using parametertype = decltype(threadData);//get parameter type
-            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
+            dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address 设置函数地址
+            dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
+            using parametertype = decltype(threadData);//get parameter type  获取参数类型
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
             m_vecAllocMem.emplace_back(lpParameter);
-            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory
+            _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory    写入参数到内存
             dataContext.lpParameter = (PBYTE)lpParameter.raw();
             _paramAddr = (UDWORD)lpParameter.raw();
-            _ctx = ctx;//store context
-            ctx.XIP = (UDWORD)lpShell.raw();//set xip
-            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory
-            thread.SetContext(ctx);//set context
-            thread.Resume();//resume thread
-            _thread = std::move(thread);//store thread
+            _ctx = ctx;//store context  保存上下文
+            ctx.XIP = (UDWORD)lpShell.raw();//set xip   设置xip
+            _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory  写入datacontext到内存
+            thread.SetContext(ctx);//set context    设置上下文
+            thread.Resume();//resume thread  恢复线程
+            _thread = std::move(thread);//store thread  存储线程
             return EnumStatus_Break;
             });
-        WaitForSingleObject(hEvent, INFINITE);//wait event
-        CloseHandle(hEvent);//close event
-        _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value
-        return threadData.retdata;//return value
+        WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
+        CloseHandle(hEvent);//close event   关闭事件
+        _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value 读取参数以返回值
+        return threadData.retdata;//return value    返回值
     }
     template <typename T>
     struct is_callable {
@@ -831,28 +832,28 @@ public:
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
-        //创建事件
+        //创建事件  create event
         auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-        //获取地址
+        //获取地址  get address
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
         auto pGetProcAddress = (LPVOID)GetProcAddress;
-        //设置函数地址
+        //设置函数地址  set function address
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
         EnumThread([&](auto& te32)->int {
-            auto thread = Thread(te32);//construct thread
-            thread.Suspend();//suspend thread
-            auto ctx = thread.GetContext();//get context
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext
-            m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory
+            auto thread = Thread(te32);//construct thread   构造线程
+            thread.Suspend();//suspend thread   暂停线程
+            auto ctx = thread.GetContext();//get context    获取上下文
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
+            m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
             threadData.fn = _Fx;
-            auto pFunction = &ThreadFunctionNoReturn<std::decay_t<_Fn>, RetType>;//get function address
-            int length = GetFunctionSize((BYTE*)pFunction);//get function length
-            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
+            auto pFunction = &ThreadFunctionNoReturn<std::decay_t<_Fn>, RetType>;//get function address 获取函数地址
+            int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
             m_vecAllocMem.emplace_back(lpFunction);
-            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory
+            _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
             dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
             dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
             using parametertype = decltype(threadData);//get parameter type
@@ -941,11 +942,11 @@ public:
         return fut;
     }
     template<class T>
-    static T TONULL() {
+    static T TONULL() { //return null value  返回空值
         return  reinterpret_cast<T>(0);
     }
 private:
-    DWORD GetProcessIdByName(const char* processName) {//get process id by name
+    DWORD GetProcessIdByName(const char* processName) {//get process id by name   通过名称获取进程id
         DWORD pid = 0;
         auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (hSnapshot != INVALID_HANDLE_VALUE) {
@@ -966,8 +967,8 @@ private:
 
 int main()
 {
-    auto& Process = Process::GetInstance();//get instance
-    Process.Attach("notepad.exe");//attach process
+    auto& Process = Process::GetInstance();//get instance   获取实例
+    Process.Attach("notepad.exe");//attach process  附加进程
     std::cout<<Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
     return 0;
 }
