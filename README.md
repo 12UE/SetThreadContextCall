@@ -34,7 +34,7 @@ int main()
     auto& Process = Process::GetInstance();//get instance
     Process.Attach("notepad.exe");//attach process
     MEMORY_BASIC_INFORMATION        mbi;
-    std::cout << Process.SetContextCall(VirtualQuery, (LPVOID)0X142670D80, &mbi, sizeof(mbi)).get();//call GetCurrentProcessId
+    std::cout << Process.SetContextCall(VirtualQuery, (LPVOID)0X142670D80, &mbi, sizeof(mbi)).get();//call GetCurrentProcessId random address
     return 0;
 }
 ```
