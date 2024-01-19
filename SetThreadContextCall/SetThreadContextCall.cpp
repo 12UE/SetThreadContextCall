@@ -1029,22 +1029,18 @@ private:
         auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (hSnapshot != INVALID_HANDLE_VALUE) {
             PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
-            if (Process32FirstW(hSnapshot, &processEntry)) {
-                do {
-                    if (_ucsicmp(processEntry.szExeFile, processName) == 0) {
-                        pid = processEntry.th32ProcessID;
-                        break;
-                    }
-                } while (Process32NextW(hSnapshot, &processEntry));
+            for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)) {
+                if (_ucsicmp(processEntry.szExeFile, processName) == 0) {
+                    pid = processEntry.th32ProcessID;
+                    break;
+                }
             }
             CloseHandle(hSnapshot);
         }
         return pid;
     }
 };
-
-int main()
-{
+int main(){
     auto& Process = Process::GetInstance();//get instance   获取实例
     Process.Attach("notepad.exe");//attach process  附加进程
     std::cout<<Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
