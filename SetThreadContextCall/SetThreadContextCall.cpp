@@ -9,7 +9,7 @@
 #include <thread>
 #include <functional>
 #include <array>
-#include<thread>
+#include <thread>
 #include <future>
 #include <chrono>
 #include <mutex>
@@ -182,6 +182,21 @@ public:
         if (instance->bflag) {
             throw std::exception("SingleTon has been created");
         }else {
+            return *instance.get();
+        }
+    }
+    static T& GetInstance() {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
+        static std::once_flag flag{};
+        static std::shared_ptr<T> instance = nullptr;
+        if (!instance) {
+            std::call_once(flag, [&]() {//call once
+                instance = std::make_shared<T>();//element constructor through parameters    通过参数构造元素
+            });
+        }
+        if (instance->bflag) {
+            throw std::exception("SingleTon has been created");
+        }
+        else {
             return *instance.get();
         }
     }
