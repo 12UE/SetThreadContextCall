@@ -33,7 +33,7 @@ public:
         return INVALID_HANDLE_VALUE;
     }
     inline static bool IsValid(HANDLE handle) {
-        return handle != INVALID_HANDLE_VALUE;
+        return handle != INVALID_HANDLE_VALUE&& handle;
     }
 };
 template<class T, class Traits>
@@ -42,21 +42,20 @@ private:
     T m_handle = Traits::InvalidHandle();
     //所有者 owner
     bool m_bOwner = false;
-    std::unordered_map<T,bool> m_mapHandle;//记录句柄是否已经被关闭 record handle is closed or not
+    std::atomic_int refcount=0;
+    void addref() {
+        refcount++;
+    }
 public:
     //构造 m_bOwner默认为true construct m_bOwner default is true
     GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {
-        if (m_bOwner) {
-            m_mapHandle[m_handle] = true;
-        }
     }
     //析构
     ~GenericHandle() {
         if (m_bOwner) {
-            auto it = m_mapHandle.find(m_handle);
-            if (it != m_mapHandle.end()) {
+            refcount--;
+            if (refcount <= 0) {
                 Traits::Close(m_handle);
-                m_mapHandle.erase(it);
             }
             m_bOwner = false;
         }
@@ -68,8 +67,11 @@ public:
         if (this != &other) {
             m_handle = other.m_handle;
             m_bOwner = other.m_bOwner;
+            bool bOwner = other.m_bOwner;
+            refcount=bOwner;
             other.m_handle = Traits::InvalidHandle();
             other.m_bOwner = false;
+            other.refcount = 0;
         }
         return *this;
     }
@@ -77,14 +79,19 @@ public:
     GenericHandle(GenericHandle&& other) {
         m_handle = other.m_handle;
         m_bOwner = other.m_bOwner;
+        bool bOwner = other.m_bOwner;
+        refcount = bOwner;
         other.m_handle = Traits::InvalidHandle();
         other.m_bOwner = false;
+        other.refcount = 0;
     }
     //获取句柄 get handle
     T GetHandle() {
+        addref();
         return m_handle;
     }
     operator T() {
+        addref();
         return m_handle;
     }
     bool IsValid() {
@@ -92,7 +99,7 @@ public:
     }
 };
 class Shared_Ptr {
-    HANDLE m_hProcess = nullptr;
+    HANDLE m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
     LPVOID BaseAddress = nullptr;
     int refCount = 0;
     void AddRef() {
@@ -387,6 +394,7 @@ void ThreadFunction2NoReturn(void* param) noexcept {
         auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
         pSetEvent(hEventHandle);
 }
+//代码来自于<加密与解密>有关劫持线程注入的代码 code from <加密与解密> about thread hijacking injection
 typedef class DATA_CONTEXT {
 public:
     BYTE ShellCode[0x30];				//x64:0X00   |->x86:0x00
@@ -469,10 +477,7 @@ public:
         }
         return *this;
     }
-    //关闭线程句柄  close thread handle
-    ~Thread() {
-
-    }
+    ~Thread() {}
     //获取线程句柄  get thread handle
     HANDLE GetHandle() { return m_GenericHandleThread.GetHandle(); }
     bool IsRunning() {
@@ -505,13 +510,13 @@ public:
         ResumeThread(GetHandle());
     }
     //PostThreadMessage 
-    BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) {
+    BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) {//向线程发送消息  send message to thread
         return ::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
     }
-    void QueApc(void* Addr) {
+    void QueApc(void* Addr) {//往线程中注入APC inject APC to thread
         QueueUserAPC((PAPCFUNC)Addr, GetHandle(), 0);
     }
-    //设置线程优先级  set thread priority
+    //设置线程优先级  set thread priority 竟然还会触发APC的强制执行  it will trigger APC to execute forcibly
     void SetPriority(int nPriority = THREAD_PRIORITY_HIGHEST) {
         SetThreadPriority(GetHandle(), nPriority);
     }
@@ -1026,12 +1031,14 @@ public:
         return  reinterpret_cast<T>(0);
     }
 private:
-    DWORD GetProcessIdByName(const char* processName) {//get process id by name   通过名称获取进程id
+    inline DWORD GetProcessIdByName(const char* processName) {//get process id by name   通过名称获取进程id
         DWORD pid = 0;
         GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (hSnapshot.IsValid()) {
             PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
+            //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name is processName
             for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)) {
+                //比较进程名 compare process name 不区分大小写不区分char*和wchar_t* case insensitive for char* and wchar_t*
                 if (_ucsicmp(processEntry.szExeFile, processName) == 0) {
                     pid = processEntry.th32ProcessID;
                     break;
