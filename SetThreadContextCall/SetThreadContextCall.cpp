@@ -56,8 +56,8 @@ public:
             refcount--;
             if (refcount <= 0) {
                 Traits::Close(m_handle);
+                m_bOwner = false;
             }
-            m_bOwner = false;
         }
     }
     GenericHandle(GenericHandle&) = delete;
