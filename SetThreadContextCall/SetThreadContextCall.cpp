@@ -32,7 +32,7 @@ public:
         return INVALID_HANDLE_VALUE;
     }
     inline static bool IsValid(HANDLE handle) {
-        return handle != INVALID_HANDLE_VALUE&& handle;
+        return handle != InvalidHandle() && handle;
     }
 };
 template<class T, class Traits>
