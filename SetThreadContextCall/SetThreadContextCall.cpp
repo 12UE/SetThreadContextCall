@@ -201,6 +201,9 @@ public:
     T GetHandle() {
         return m_handle;
     }
+    bool IsValid() {
+        return Traits::IsValid(m_handle);
+    }
 };
 #define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&)=delete;TYPE(TYPE&&) = delete;void operator= (const TYPE&) = delete;void operator= (TYPE&&) = delete;
 template<typename T >
@@ -208,7 +211,7 @@ class SingleTon {
 private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
     std::atomic_bool bflag=false;
-    HANDLE hEvent = INVALID_HANDLE_VALUE;
+    GenericHandle<HANDLE, NormalHandle> hEvent;
     static inline std::shared_ptr<T> CreateInstance() {
         return std::make_shared<T>();
     }
@@ -252,15 +255,11 @@ public:
         std::string eventname = typeid(T).name();
         //创建互斥量 create event
         hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
-        if (hEvent == NULL)throw std::exception("CreateEventA failed");
         //检查互斥量是否已经被创建 check event is created
         bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
+        if (!hEvent.IsValid())throw std::exception("CreateEventA failed");
     }
     ~SingleTon() {
-        if (hEvent != INVALID_HANDLE_VALUE) {
-            CloseHandle(hEvent);//关闭事件 close event
-            hEvent = INVALID_HANDLE_VALUE;//置为无效值 set invalid value
-        }
     }
     template <class... Args>
     inline static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
@@ -432,15 +431,13 @@ public:
     //打开线程 open thread
     Thread(DWORD dwThreadId) {
         m_dwThreadId = dwThreadId;
-        auto m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
-        m_GenericHandleThread = m_hThread;
+        m_GenericHandleThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
         m_bAttached = true;
     }
     //从threadentry32构造 construct from threadentry32  to open thread
     Thread(const THREADENTRY32& threadEntry) {
         m_dwThreadId = threadEntry.th32ThreadID;
-       auto m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
-        m_GenericHandleThread = m_hThread;
+        m_GenericHandleThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
         m_bAttached = true;
     }
     //移动构造  move construct
