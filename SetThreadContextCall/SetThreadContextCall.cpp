@@ -150,13 +150,16 @@ template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * 
 class NormalHandle {
 public:
     static void Close(HANDLE& handle) {
-        if (handle != InvalidHandle()) {
+        if (IsValid(handle)) {
             CloseHandle(handle);
             handle = InvalidHandle();
         }
     }
     static HANDLE InvalidHandle() {
         return INVALID_HANDLE_VALUE;
+    }
+    static bool IsValid(HANDLE handle) {
+        return handle != INVALID_HANDLE_VALUE;
     }
 };
 template<class T,class Traits>
@@ -172,6 +175,7 @@ public:
     ~GenericHandle() {
         if (m_bOwner) {
             Traits::Close(m_handle);
+            m_bOwner = false;
         }
     }
     GenericHandle(GenericHandle&) = delete;
@@ -238,8 +242,7 @@ private:
         }
         if (instance->bflag) {
             throw std::exception("SingleTon has been created");
-        }
-        else {
+        }else {
             return *instance.get();
         }
     }
