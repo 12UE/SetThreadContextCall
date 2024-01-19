@@ -17,13 +17,9 @@
 #if defined _WIN64
 using UDWORD = DWORD64;
 #define XIP Rip//instruction pointer
-#define XAX Rax//accumulator
-#define U64_ "%llx"  //U64_ When using, be careful not to add "%" again
 #else
 using UDWORD = DWORD32;
 #define XIP Eip//instruction pointer
-#define XAX Eax//accumulator
-#define U64_ "%x"//U64_ When using, be careful not to add "%" again
 #endif
 class Shared_Ptr {
     HANDLE m_hProcess = nullptr;
@@ -264,8 +260,7 @@ public:
     template <class... Args>
     inline static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
         return GetInstanceImpl(args...);
-    }
-       
+    }   
 };
 enum EnumStatus {
     Continue,
@@ -635,10 +630,6 @@ public:
         return m_vector.end();
     }
 };
-template<typename T,typename ...Args>
-concept Callable = requires(T t,Args...args) { //check callable concept 检查可调用概念
-    { t(args...) };
-};
 #define POINTER_READ 0
 #define POINTER_WRITE 1
 template<class T>
@@ -776,7 +767,6 @@ public:
         for (auto& p : m_vecAllocMem) p.Release();
         m_vecAllocMem.clear();
     }
-
     template<class _Fn, class ...Arg>
     decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args) {
         using RetType = std::common_type<decltype(_Fx(args...))>::type;//return type is common type or not
@@ -1008,7 +998,6 @@ public:
         if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
         maptoorigin.clear();//clear map
     }
-
     decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) {
         static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");
         auto retdata = SetContextCallImpl(_Fx, args...);
