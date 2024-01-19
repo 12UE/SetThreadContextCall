@@ -149,16 +149,16 @@ template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * 
 }
 class NormalHandle {
 public:
-    static void Close(HANDLE& handle) {
+    inline static void Close(HANDLE& handle) {
         if (IsValid(handle)) {
             CloseHandle(handle);
             handle = InvalidHandle();
         }
     }
-    static HANDLE InvalidHandle() {
+    inline static HANDLE InvalidHandle() {
         return INVALID_HANDLE_VALUE;
     }
-    static bool IsValid(HANDLE handle) {
+    inline static bool IsValid(HANDLE handle) {
         return handle != INVALID_HANDLE_VALUE;
     }
 };
@@ -259,7 +259,7 @@ public:
         bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
         if (!hEvent.IsValid())throw std::exception("CreateEventA failed");
     }
-    ~SingleTon() {
+    ~SingleTon() { 
     }
     template <class... Args>
     inline static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
@@ -267,8 +267,10 @@ public:
     }
        
 };
-#define EnumStatus_Continue (int)0
-#define EnumStatus_Break (int)1
+enum EnumStatus {
+    Continue,
+    Break
+};
 //保存原始的对齐方式 save original align
 #pragma pack(push)
 #pragma pack(1)
@@ -762,7 +764,7 @@ public:
                     do {
                         if (threadEntry.th32OwnerProcessID == m_pid) {
                             Thread thread(threadEntry);
-                            if (thread.IsRunning())if (pre(threadEntry) == EnumStatus_Break)break;
+                            if (thread.IsRunning())if (pre(threadEntry) == Break)break;
                         }
                     } while (Thread32Next(hSnapshot, &threadEntry));
                 }
@@ -825,7 +827,7 @@ public:
             thread.SetContext(ctx);//set context    设置上下文
             thread.Resume();//resume thread   恢复线程
             _thread = std::move(thread);//move thread   移动线程
-            return EnumStatus_Break;
+            return Break;
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
         CloseHandle(hEvent);//close event   关闭事件
@@ -858,7 +860,7 @@ public:
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
             auto ctx = thread.GetContext();//get context    获取上下文
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess.GetHandle());//allocate memory for datacontext   分配内存
             m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
@@ -882,7 +884,7 @@ public:
             thread.SetContext(ctx);//set context    设置上下文
             thread.Resume();//resume thread  恢复线程
             _thread = std::move(thread);//store thread  存储线程
-            return EnumStatus_Break;
+            return Break;
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
         CloseHandle(hEvent);//close event   关闭事件
@@ -920,7 +922,7 @@ public:
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
             auto ctx = thread.GetContext();//get context    获取上下文
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess.GetHandle());//allocate memory for datacontext   分配内存
             m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
@@ -944,7 +946,7 @@ public:
             thread.SetContext(ctx);//set context
             thread.Resume();//resume thread
             _thread = std::move(thread);//store thread
-            return EnumStatus_Break;
+            return Break;
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event
         CloseHandle(hEvent);//close event
@@ -973,7 +975,7 @@ public:
             auto thread = Thread(te32);//construct thread
             thread.Suspend();//suspend thread
             auto ctx = thread.GetContext();//get context
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess.GetHandle());//allocate memory
             m_vecAllocMem.emplace_back(lpShell);//
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
@@ -999,7 +1001,7 @@ public:
             thread.SetContext(ctx);//set context
             thread.Resume();//resume thread
             _thread = std::move(thread);//move thread
-            return EnumStatus_Break;
+            return Break;
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event
         CloseHandle(hEvent);//close event
