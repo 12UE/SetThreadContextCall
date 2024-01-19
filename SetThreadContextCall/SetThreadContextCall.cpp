@@ -171,7 +171,7 @@ public:
         }
     }
     template <class... Args>
-    static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
+    inline static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
         static std::once_flag flag{};
         static std::shared_ptr<T> instance = nullptr;
         if (!instance) {
@@ -185,7 +185,7 @@ public:
             return *instance.get();
         }
     }
-    static T& GetInstance() {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
+    inline static T& GetInstance() {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
         static std::once_flag flag{};
         static std::shared_ptr<T> instance = nullptr;
         if (!instance) {
