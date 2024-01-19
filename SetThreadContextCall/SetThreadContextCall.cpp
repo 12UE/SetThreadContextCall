@@ -21,6 +21,76 @@ using UDWORD = DWORD64;
 using UDWORD = DWORD32;
 #define XIP Eip//instruction pointer
 #endif
+class NormalHandle {
+public:
+    inline static void Close(HANDLE& handle) {
+        if (IsValid(handle)) {
+            CloseHandle(handle);
+            handle = InvalidHandle();
+        }
+    }
+    inline static HANDLE InvalidHandle() {
+        return INVALID_HANDLE_VALUE;
+    }
+    inline static bool IsValid(HANDLE handle) {
+        return handle != INVALID_HANDLE_VALUE;
+    }
+};
+template<class T, class Traits>
+class GenericHandle {
+private:
+    T m_handle = Traits::InvalidHandle();
+    //所有者 owner
+    bool m_bOwner = false;
+    std::unordered_map<T,bool> m_mapHandle;//记录句柄是否已经被关闭 record handle is closed or not
+public:
+    //构造 m_bOwner默认为true construct m_bOwner default is true
+    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {
+        if (m_bOwner) {
+            m_mapHandle[m_handle] = true;
+        }
+    }
+    //析构
+    ~GenericHandle() {
+        if (m_bOwner) {
+            auto it = m_mapHandle.find(m_handle);
+            if (it != m_mapHandle.end()) {
+                Traits::Close(m_handle);
+                m_mapHandle.erase(it);
+            }
+            m_bOwner = false;
+        }
+    }
+    GenericHandle(GenericHandle&) = delete;
+    GenericHandle& operator =(const GenericHandle&) = delete;
+    //右值引用右值赋值 move assignment
+    GenericHandle& operator =(GenericHandle&& other) {
+        if (this != &other) {
+            m_handle = other.m_handle;
+            m_bOwner = other.m_bOwner;
+            other.m_handle = Traits::InvalidHandle();
+            other.m_bOwner = false;
+        }
+        return *this;
+    }
+    //右值引用右值构造 move construct
+    GenericHandle(GenericHandle&& other) {
+        m_handle = other.m_handle;
+        m_bOwner = other.m_bOwner;
+        other.m_handle = Traits::InvalidHandle();
+        other.m_bOwner = false;
+    }
+    //获取句柄 get handle
+    T GetHandle() {
+        return m_handle;
+    }
+    operator T() {
+        return m_handle;
+    }
+    bool IsValid() {
+        return Traits::IsValid(m_handle);
+    }
+};
 class Shared_Ptr {
     HANDLE m_hProcess = nullptr;
     LPVOID BaseAddress = nullptr;
@@ -143,67 +213,7 @@ template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * 
     std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
     return wstr1.compare(wstr2);
 }
-class NormalHandle {
-public:
-    inline static void Close(HANDLE& handle) {
-        if (IsValid(handle)) {
-            CloseHandle(handle);
-            handle = InvalidHandle();
-        }
-    }
-    inline static HANDLE InvalidHandle() {
-        return INVALID_HANDLE_VALUE;
-    }
-    inline static bool IsValid(HANDLE handle) {
-        return handle != INVALID_HANDLE_VALUE;
-    }
-};
-template<class T,class Traits>
-class GenericHandle {
-private:
-    T m_handle = Traits::InvalidHandle();
-    //所有者 owner
-    bool m_bOwner = false;
-public:
-    //构造 m_bOwner默认为true construct m_bOwner default is true
-    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
-    //析构
-    ~GenericHandle() {
-        if (m_bOwner) {
-            Traits::Close(m_handle);
-            m_bOwner = false;
-        }
-    }
-    GenericHandle(GenericHandle&) = delete;
-    GenericHandle& operator =(const GenericHandle&) = delete;
-    //右值引用右值赋值 move assignment
-    GenericHandle& operator =(GenericHandle&& other) {
-        if (this != &other) {
-            m_handle = other.m_handle;
-            m_bOwner = other.m_bOwner;
-            other.m_handle = Traits::InvalidHandle();
-            other.m_bOwner = false;
-        }
-        return *this;
-    }
-    //右值引用右值构造 move construct
-    GenericHandle(GenericHandle&& other) {
-        m_handle = other.m_handle;
-        m_bOwner = other.m_bOwner;
-        other.m_handle = Traits::InvalidHandle();
-        other.m_bOwner = false;
-    }
-    //获取句柄 get handle
-    T GetHandle() {
-        return m_handle;
-    }
-    operator T() {
-        return m_handle;
-    }
-    bool IsValid() {
-        return Traits::IsValid(m_handle);
-    }
-};
+
 #define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&)=delete;TYPE(TYPE&&) = delete;void operator= (const TYPE&) = delete;void operator= (TYPE&&) = delete;
 template<typename T >
 class SingleTon {
