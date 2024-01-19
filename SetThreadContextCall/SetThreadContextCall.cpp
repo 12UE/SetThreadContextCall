@@ -170,7 +170,7 @@ private:
     bool m_bOwner = false;
 public:
     //构造 m_bOwner默认为true construct m_bOwner default is true
-    GenericHandle(T handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
+    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
     //析构
     ~GenericHandle() {
         if (m_bOwner) {
@@ -797,7 +797,7 @@ public:
         //设置函数地址  set function address
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
-        EnumThread([&](auto& te32)->int {
+        EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
             auto ctx = thread.GetContext();//get context    获取上下文
@@ -856,7 +856,7 @@ public:
         //设置函数地址  set function address
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
-        EnumThread([&](auto& te32)->int {
+        EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
             auto ctx = thread.GetContext();//get context    获取上下文
@@ -918,7 +918,7 @@ public:
         //设置函数地址  set function address
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
-        EnumThread([&](auto& te32)->int {
+        EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
             auto ctx = thread.GetContext();//get context    获取上下文
@@ -971,7 +971,7 @@ public:
         //设置函数地址
         threadData.pFunc[0] = (LPVOID)pLoadLibrary;
         threadData.pFunc[1] = (LPVOID)pGetProcAddress;
-        EnumThread([&](auto& te32)->int {
+        EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread
             thread.Suspend();//suspend thread
             auto ctx = thread.GetContext();//get context
