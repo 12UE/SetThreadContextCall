@@ -1033,6 +1033,7 @@ public:
 private:
     inline DWORD GetProcessIdByName(const char* processName) {//get process id by name   通过名称获取进程id
         DWORD pid = 0;
+        //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
         GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (hSnapshot.IsValid()) {
             PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
