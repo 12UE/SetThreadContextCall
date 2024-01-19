@@ -13,7 +13,6 @@
 #include <future>
 #include <chrono>
 #include <mutex>
-#include<unordered_map>
 #if defined _WIN64
 using UDWORD = DWORD64;
 #define XIP Rip//instruction pointer
