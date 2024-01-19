@@ -197,6 +197,9 @@ public:
     T GetHandle() {
         return m_handle;
     }
+    operator T() {
+        return m_handle;
+    }
     bool IsValid() {
         return Traits::IsValid(m_handle);
     }
@@ -992,7 +995,7 @@ public:
             thread.Resume();//resume thread
             _thread = std::move(thread);//move thread
             return Break;
-            });
+        });
         WaitForSingleObject(hEvent, INFINITE);//wait event
         CloseHandle(hEvent);//close event
         if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
@@ -1015,8 +1018,8 @@ public:
 private:
     DWORD GetProcessIdByName(const char* processName) {//get process id by name   通过名称获取进程id
         DWORD pid = 0;
-        auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (hSnapshot != INVALID_HANDLE_VALUE) {
+        GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (hSnapshot.IsValid()) {
             PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
             for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)) {
                 if (_ucsicmp(processEntry.szExeFile, processName) == 0) {
@@ -1024,7 +1027,6 @@ private:
                     break;
                 }
             }
-            CloseHandle(hSnapshot);
         }
         return pid;
     }
