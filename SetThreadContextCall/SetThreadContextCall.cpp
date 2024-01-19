@@ -47,8 +47,7 @@ private:
     }
 public:
     //构造 m_bOwner默认为true construct m_bOwner default is true
-    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {
-    }
+    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
     //析构
     ~GenericHandle() {
         if (m_bOwner) {
