@@ -147,6 +147,57 @@ template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * 
     std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
     return wstr1.compare(wstr2);
 }
+class NormalHandle {
+public:
+    static void Close(HANDLE& handle) {
+        if (handle != InvalidHandle()) {
+            CloseHandle(handle);
+            handle = InvalidHandle();
+        }
+    }
+    static HANDLE InvalidHandle() {
+        return INVALID_HANDLE_VALUE;
+    }
+};
+template<class T,class Traits>
+class GenericHandle {
+private:
+    T m_handle = Traits::InvalidHandle();
+    //所有者 owner
+    bool m_bOwner = false;
+public:
+    //构造 m_bOwner默认为true construct m_bOwner default is true
+    GenericHandle(T handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
+    //析构
+    ~GenericHandle() {
+        if (m_bOwner) {
+            Traits::Close(m_handle);
+        }
+    }
+    GenericHandle(GenericHandle&) = delete;
+    GenericHandle& operator =(const GenericHandle&) = delete;
+    //右值引用右值赋值 move assignment
+    GenericHandle& operator =(GenericHandle&& other) {
+        if (this != &other) {
+            m_handle = other.m_handle;
+            m_bOwner = other.m_bOwner;
+            other.m_handle = Traits::InvalidHandle();
+            other.m_bOwner = false;
+        }
+        return *this;
+    }
+    //右值引用右值构造 move construct
+    GenericHandle(GenericHandle&& other) {
+        m_handle = other.m_handle;
+        m_bOwner = other.m_bOwner;
+        other.m_handle = Traits::InvalidHandle();
+        other.m_bOwner = false;
+    }
+    //获取句柄 get handle
+    T GetHandle() {
+        return m_handle;
+    }
+};
 #define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&)=delete;TYPE(TYPE&&) = delete;void operator= (const TYPE&) = delete;void operator= (TYPE&&) = delete;
 template<typename T >
 class SingleTon {
@@ -154,6 +205,44 @@ private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
     std::atomic_bool bflag=false;
     HANDLE hEvent = INVALID_HANDLE_VALUE;
+    static inline std::shared_ptr<T> CreateInstance() {
+        return std::make_shared<T>();
+    }
+    template <class... Args>
+    static inline std::shared_ptr<T> CreateInstance(Args&& ...args) {
+        return std::make_shared<T>(args...);
+    }
+    template <class... Args>
+    inline static T& GetInstanceImpl(Args&& ...args) {
+        static std::once_flag flag{};
+        static std::shared_ptr<T> instance = nullptr;
+        if (!instance) {
+            std::call_once(flag, [&]() {//call once
+                instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
+            });
+        }
+        if (instance->bflag) {
+            throw std::exception("SingleTon has been created");
+        }
+        else {
+            return *instance.get();
+        }
+    }
+    inline static T& GetInstanceImpl() {
+        static std::once_flag flag{};
+        static std::shared_ptr<T> instance = nullptr;
+        if (!instance) {
+            std::call_once(flag, [&]() {//call once
+                instance = CreateInstance();//element constructor through parameters    通过参数构造元素
+            });
+        }
+        if (instance->bflag) {
+            throw std::exception("SingleTon has been created");
+        }
+        else {
+            return *instance.get();
+        }
+    }
 public:
     SingleTon() {
         //按类名的typeid作为事件名 create event name by typeid
@@ -172,34 +261,9 @@ public:
     }
     template <class... Args>
     inline static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
-        static std::once_flag flag{};
-        static std::shared_ptr<T> instance = nullptr;
-        if (!instance) {
-            std::call_once(flag, [&]() {//call once
-                instance = std::make_shared<T>(args...);//element constructor through parameters    通过参数构造元素
-            });
-        }
-        if (instance->bflag) {
-            throw std::exception("SingleTon has been created");
-        }else {
-            return *instance.get();
-        }
+        return GetInstanceImpl(args...);
     }
-    inline static T& GetInstance() {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
-        static std::once_flag flag{};
-        static std::shared_ptr<T> instance = nullptr;
-        if (!instance) {
-            std::call_once(flag, [&]() {//call once
-                instance = std::make_shared<T>();//element constructor through parameters    通过参数构造元素
-            });
-        }
-        if (instance->bflag) {
-            throw std::exception("SingleTon has been created");
-        }
-        else {
-            return *instance.get();
-        }
-    }
+       
 };
 #define EnumStatus_Continue (int)0
 #define EnumStatus_Break (int)1
@@ -357,7 +421,7 @@ inline BYTE ContextInjectShell[] = {	//x86.asm
 };
 #endif
 class Thread {
-    HANDLE m_hThread = INVALID_HANDLE_VALUE;
+    GenericHandle<HANDLE, NormalHandle> m_GenericHandleThread;
     DWORD m_dwThreadId = 0;
     bool m_bAttached = false;
 public:
@@ -365,31 +429,31 @@ public:
     //打开线程 open thread
     Thread(DWORD dwThreadId) {
         m_dwThreadId = dwThreadId;
-        m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+        auto m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+        m_GenericHandleThread = m_hThread;
         m_bAttached = true;
     }
     //从threadentry32构造 construct from threadentry32  to open thread
     Thread(const THREADENTRY32& threadEntry) {
         m_dwThreadId = threadEntry.th32ThreadID;
-        m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+       auto m_hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+        m_GenericHandleThread = m_hThread;
         m_bAttached = true;
     }
     //移动构造  move construct
     Thread(Thread&& other) {
-        m_hThread = other.m_hThread;
+        m_GenericHandleThread = std::move(other.m_GenericHandleThread);
         m_dwThreadId = other.m_dwThreadId;
         m_bAttached = other.m_bAttached;
-        other.m_hThread = INVALID_HANDLE_VALUE;
         other.m_dwThreadId = 0;
         other.m_bAttached = false;
     }
     //移动赋值 move assignment
     Thread& operator=(Thread&& other) {
         if (this != &other) {
-            m_hThread = other.m_hThread;
+            m_GenericHandleThread = std::move(other.m_GenericHandleThread);
             m_dwThreadId = other.m_dwThreadId;
             m_bAttached = other.m_bAttached;
-            other.m_hThread = INVALID_HANDLE_VALUE;
             other.m_dwThreadId = 0;
             other.m_bAttached = false;
         }
@@ -397,17 +461,14 @@ public:
     }
     //关闭线程句柄  close thread handle
     ~Thread() {
-        if (m_bAttached) {
-            CloseHandle(m_hThread);
-            m_hThread = NULL;
-        }
+
     }
     //获取线程句柄  get thread handle
-    HANDLE GetHandle() { return m_hThread; }
+    HANDLE GetHandle() { return m_GenericHandleThread.GetHandle(); }
     bool IsRunning() {
         //获取线程退出代码  get thread exit code
         DWORD dwExitCode = 0;
-        if (GetExitCodeThread(m_hThread, &dwExitCode)) {
+        if (GetExitCodeThread(GetHandle(), &dwExitCode)) {
             if (dwExitCode == STILL_ACTIVE) {
                 return true;
             }
@@ -418,31 +479,31 @@ public:
     CONTEXT GetContext() {
         CONTEXT context = { 0 };
         context.ContextFlags = CONTEXT_FULL;
-        GetThreadContext(m_hThread, &context);
+        GetThreadContext(GetHandle(), &context);
         return context;
     }
     //设置上下文    set context
     void SetContext(CONTEXT& context) {
-        SetThreadContext(m_hThread, &context);
+        SetThreadContext(GetHandle(), &context);
     }
     //暂停  suspend
     void Suspend() {
-        SuspendThread(m_hThread);
+        SuspendThread(GetHandle());
     }
     //恢复  resume
     void Resume() {
-        ResumeThread(m_hThread);
+        ResumeThread(GetHandle());
     }
     //PostThreadMessage 
     BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) {
         return ::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
     }
     void QueApc(void* Addr) {
-        QueueUserAPC((PAPCFUNC)Addr, m_hThread, 0);
+        QueueUserAPC((PAPCFUNC)Addr, GetHandle(), 0);
     }
     //设置线程优先级  set thread priority
     void SetPriority(int nPriority = THREAD_PRIORITY_HIGHEST) {
-        SetThreadPriority(m_hThread, nPriority);
+        SetThreadPriority(GetHandle(), nPriority);
     }
 };
 template <typename T>
