@@ -24,27 +24,18 @@ using UDWORD = DWORD32;
 #endif
 class NormalHandle {
 public:
-    INLINE  static void Close(HANDLE handle)NOEXCEPT {
-        CloseHandle(handle);
-    }
-    INLINE static HANDLE InvalidHandle()NOEXCEPT {
-        return INVALID_HANDLE_VALUE;
-    }
-    INLINE static bool IsValid(HANDLE handle)NOEXCEPT {
-        return handle != InvalidHandle() && handle;
-    }
+    INLINE  static void Close(HANDLE handle)NOEXCEPT {CloseHandle(handle);}
+    INLINE static HANDLE InvalidHandle()NOEXCEPT {return INVALID_HANDLE_VALUE;}
+    INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle;}
 };
 template<class T, class Traits>
 class GenericHandle {
 private:
     T m_handle = Traits::InvalidHandle();
-    //所有者 owner
-    bool m_bOwner = false;
+    bool m_bOwner = false;//所有者 owner
     INLINE bool IsValid()NOEXCEPT { return Traits::IsValid(m_handle);}
 public:
-    //构造 m_bOwner默认为true construct m_bOwner default is true
-    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner){}
-    //析构
+    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner){}//构造 m_bOwner默认为true construct m_bOwner default is true
     ~GenericHandle(){
         if (m_bOwner&& IsValid()){
           Traits::Close(m_handle);
@@ -54,7 +45,6 @@ public:
     }
     GenericHandle(GenericHandle&) = delete;
     GenericHandle& operator =(const GenericHandle&) = delete;
-    //右值引用右值赋值 move assignment
     INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {
         if (this != &other){
             m_handle = other.m_handle;
@@ -64,7 +54,6 @@ public:
         }
         return *this;
     }
-    //右值引用右值构造 move construct
     INLINE GenericHandle(GenericHandle&& other)NOEXCEPT {
         m_handle = other.m_handle;
         m_bOwner = other.m_bOwner;
@@ -104,9 +93,7 @@ public:
     }
     INLINE Shared_Ptr(size_t nsize, HANDLE hProc) :m_hProcess(hProc){
         AddRef();
-        //virtualallocex
-        BaseAddress = (LPVOID)_AllocMemApi(nsize);
-
+        BaseAddress = (LPVOID)_AllocMemApi(nsize);//virtualallocex
     }
     INLINE Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount){
         AddRef();
@@ -124,16 +111,12 @@ public:
         AddRef();
         return BaseAddress;
     }
-    INLINE LPVOID raw() NOEXCEPT {
-        return BaseAddress;
-    }
+    INLINE LPVOID raw() NOEXCEPT {return BaseAddress;}
     INLINE UDWORD getUDWORD() NOEXCEPT {
         AddRef();
         return (UDWORD)BaseAddress;
     }
-    INLINE ~Shared_Ptr() NOEXCEPT {
-        Release();
-    }
+    INLINE ~Shared_Ptr() NOEXCEPT { Release();}
     INLINE void Release() NOEXCEPT {//release and refCount--
         refCount--;
         if (BaseAddress && refCount <= 0){
@@ -141,9 +124,7 @@ public:
             BaseAddress = nullptr;
         }
     }
-    INLINE operator bool() NOEXCEPT {
-        return BaseAddress != nullptr;
-    }
+    INLINE operator bool() NOEXCEPT {return BaseAddress != nullptr;}
 };
 template<class T>Shared_Ptr make_Shared(size_t nsize, HANDLE hprocess) NOEXCEPT { return Shared_Ptr(sizeof(T) * nsize, hprocess); }
 template<class BinFunc>
@@ -208,13 +189,9 @@ private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
     std::atomic_bool bflag=false;
     GenericHandle<HANDLE, NormalHandle> hEvent;
-    static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT {
-        return std::make_shared<T>();
-    }
+    static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT {return std::make_shared<T>();}
     template <class... Args>
-    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT {
-        return std::make_shared<T>(args...);
-    }
+    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT {return std::make_shared<T>(args...);}
     template <class... Args>
     INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
         static std::once_flag flag{};
@@ -226,8 +203,7 @@ private:
         }
         if (instance->bflag) NOEXCEPT {
             throw std::exception("SingleTon has been created");
-        }
-        else {
+        }else {
             return *instance.get();
         }
     }
@@ -255,8 +231,7 @@ public:
         bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
         if (!hEvent)throw std::exception("CreateEventA failed");
     }
-    ~SingleTon() NOEXCEPT { 
-    }
+    ~SingleTon() NOEXCEPT { }
     template <class... Args>
     INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
         return GetInstanceImpl(args...);
@@ -313,13 +288,10 @@ T ThreadFunction(void* param) noexcept {
     threadData->retdata = threadData->fn();
     auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
     auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-    //加载OpenEventA    load OpenEventA
     auto ntdll = pLoadLibrary(threadData->funcname[0]);
-    auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
-    //打开事件  open event
-    auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-    //设置事件  set event
-    auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);
+    auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);//加载OpenEventA    load OpenEventA
+    auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname); //打开事件  open event
+    auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);//设置事件  set event
     pSetEvent(hEventHandle);
     return threadData->retdata;
 }
@@ -329,13 +301,10 @@ void ThreadFunctionNoReturn(void* param) noexcept {
     threadData->fn();
     auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
     auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-    //加载OpenEventA    load OpenEventA
     auto ntdll = pLoadLibrary(threadData->funcname[0]);
-    auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
-    //打开事件  open event
-    auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-    //设置事件  set event
-    auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);
+    auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);    //加载OpenEventA    load OpenEventA
+    auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);    //打开事件  open event
+    auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);    //设置事件  set event
     pSetEvent(hEventHandle);
 }
 template <class Fn, class T, class... Args>
@@ -347,13 +316,10 @@ decltype(auto) ThreadFunction2(void* param) noexcept {
         }(std::make_index_sequence<sizeof...(Args)>{});
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        //加载OpenEventA    load OpenEventA
         auto hEvent = pLoadLibrary(threadData->funcname[0]);
-        auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
-        //打开事件  open event
-        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-        //设置事件  set event
-        auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+        auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);        //加载OpenEventA    load OpenEventA
+        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);        //打开事件  open event
+        auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);        //设置事件  set event
         pSetEvent(hEventHandle);
         return ret;
 }
@@ -365,13 +331,10 @@ void ThreadFunction2NoReturn(void* param) noexcept {
         }(std::make_index_sequence<sizeof...(Args)>{});
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        //加载OpenEventA    load OpenEventA
         auto hEvent = pLoadLibrary(threadData->funcname[0]);
-        auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
-        //打开事件  open event
-        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-        //设置事件  set event
-        auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+        auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);        //加载OpenEventA    load OpenEventA
+        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);        //打开事件  open event
+        auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);       //设置事件  set event
         pSetEvent(hEventHandle);
 }
 //代码来自于<加密与解密>有关劫持线程注入的代码 code from <加密与解密> about thread hijacking injection
@@ -426,28 +389,24 @@ class Thread {
     bool m_bAttached = false;
 public:
     Thread() = default;
-    //打开线程 open thread
-    Thread(DWORD dwThreadId) NOEXCEPT {
+    Thread(DWORD dwThreadId) NOEXCEPT {    //打开线程 open thread
         m_dwThreadId = dwThreadId;
         m_GenericHandleThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
         m_bAttached = true;
     }
-    //从threadentry32构造 construct from threadentry32  to open thread
-    Thread(const THREADENTRY32& threadEntry) NOEXCEPT {
+    Thread(const THREADENTRY32& threadEntry) NOEXCEPT {   //从threadentry32构造 construct from threadentry32  to open thread
         m_dwThreadId = threadEntry.th32ThreadID;
         m_GenericHandleThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
         m_bAttached = true;
     }
-    //移动构造  move construct
-    Thread(Thread&& other) NOEXCEPT {
+    Thread(Thread&& other) NOEXCEPT {    //移动构造  move construct
         m_GenericHandleThread = std::move(other.m_GenericHandleThread);
         m_dwThreadId = other.m_dwThreadId;
         m_bAttached = other.m_bAttached;
         other.m_dwThreadId = 0;
         other.m_bAttached = false;
     }
-    //移动赋值 move assignment
-    Thread& operator=(Thread&& other) NOEXCEPT {
+    Thread& operator=(Thread&& other) NOEXCEPT {    //移动赋值 move assignment
         if (this != &other){
             m_GenericHandleThread = std::move(other.m_GenericHandleThread);
             m_dwThreadId = other.m_dwThreadId;
@@ -458,8 +417,7 @@ public:
         return *this;
     }
     ~Thread() NOEXCEPT {}
-    //获取线程句柄  get thread handle
-    HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }
+    HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }//获取线程句柄  get thread handle
     bool IsRunning() NOEXCEPT {
         //获取线程退出代码  get thread exit code
         DWORD dwExitCode = 0;
