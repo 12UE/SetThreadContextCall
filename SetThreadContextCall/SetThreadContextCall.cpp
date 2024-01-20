@@ -13,6 +13,7 @@
 #include <future>
 #include <chrono>
 #include <mutex>
+#define INLINE inline
 #if defined _WIN64
 using UDWORD = DWORD64;
 #define XIP Rip//instruction pointer
@@ -22,13 +23,13 @@ using UDWORD = DWORD32;
 #endif
 class NormalHandle {
 public:
-    inline static void Close(HANDLE handle) {
-            CloseHandle(handle);
+    INLINE  static void Close(HANDLE handle) {
+        CloseHandle(handle);
     }
-    inline static HANDLE InvalidHandle() {
+    INLINE static HANDLE InvalidHandle() {
         return INVALID_HANDLE_VALUE;
     }
-    inline static bool IsValid(HANDLE handle) {
+    INLINE static bool IsValid(HANDLE handle) {
         return handle != InvalidHandle() && handle;
     }
 };
@@ -38,7 +39,7 @@ private:
     T m_handle = Traits::InvalidHandle();
     //所有者 owner
     bool m_bOwner = false;
-    inline bool IsValid() { return Traits::IsValid(m_handle);}
+    INLINE bool IsValid() { return Traits::IsValid(m_handle);}
 public:
     //构造 m_bOwner默认为true construct m_bOwner default is true
     GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
@@ -53,7 +54,7 @@ public:
     GenericHandle(GenericHandle&) = delete;
     GenericHandle& operator =(const GenericHandle&) = delete;
     //右值引用右值赋值 move assignment
-    inline GenericHandle& operator =(GenericHandle&& other) {
+    INLINE GenericHandle& operator =(GenericHandle&& other) {
         if (this != &other) {
             m_handle = other.m_handle;
             m_bOwner = other.m_bOwner;
@@ -63,16 +64,16 @@ public:
         return *this;
     }
     //右值引用右值构造 move construct
-    inline GenericHandle(GenericHandle&& other) {
+    INLINE GenericHandle(GenericHandle&& other) {
         m_handle = other.m_handle;
         m_bOwner = other.m_bOwner;
         other.m_handle = Traits::InvalidHandle();
         other.m_bOwner = false;
     }
-    inline operator T() {
+    INLINE operator T() {
         return m_handle;
     }
-    inline operator bool() {
+    INLINE operator bool() {
         return IsValid();
     }
 };
@@ -83,33 +84,33 @@ class Shared_Ptr {
     void AddRef() {
         refCount++;
     }
-    UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) {
+    INLINE UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) {
         auto allocatedMemory = VirtualAllocEx(m_hProcess, PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         return reinterpret_cast<UDWORD>(allocatedMemory);
     }
-    bool _FreeMemApi(LPVOID lpAddress) {
+    INLINE bool _FreeMemApi(LPVOID lpAddress) {
         return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
     }
 public:
-    Shared_Ptr(void* Addr, HANDLE hProc) : m_hProcess(hProc) {
+    INLINE Shared_Ptr(void* Addr, HANDLE hProc) : m_hProcess(hProc) {
         BaseAddress = Addr;
         AddRef();
     }
     template<class T>
-    Shared_Ptr() {
+    INLINE Shared_Ptr() {
         AddRef();
         BaseAddress = (LPVOID)_AllocMemApi(sizeof(T));
     }
-    Shared_Ptr(size_t nsize, HANDLE hProc) :m_hProcess(hProc) {
+    INLINE Shared_Ptr(size_t nsize, HANDLE hProc) :m_hProcess(hProc) {
         AddRef();
         //virtualallocex
         BaseAddress = (LPVOID)_AllocMemApi(nsize);
 
     }
-    Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount) {
+    INLINE Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount) {
         AddRef();
     }
-    Shared_Ptr& operator=(const Shared_Ptr& other) {//copy assignment
+    INLINE Shared_Ptr& operator=(const Shared_Ptr& other) {//copy assignment
         if (this != &other) {
             Release();
             BaseAddress = other.BaseAddress;
@@ -118,34 +119,34 @@ public:
         }
         return *this;
     }
-    LPVOID get() {
+    INLINE LPVOID get() {
         AddRef();
         return BaseAddress;
     }
-    LPVOID raw() {
+    INLINE LPVOID raw() {
         return BaseAddress;
     }
-    UDWORD getUDWORD() {
+    INLINE UDWORD getUDWORD() {
         AddRef();
         return (UDWORD)BaseAddress;
     }
-    ~Shared_Ptr() {
+    INLINE ~Shared_Ptr() {
         Release();
     }
-    void Release() {//release and refCount--
+    INLINE void Release() {//release and refCount--
         refCount--;
         if (BaseAddress && refCount <= 0) {
             _FreeMemApi(BaseAddress);
             BaseAddress = nullptr;
         }
     }
-    operator bool() {
+    INLINE operator bool() {
         return BaseAddress != nullptr;
     }
 };
 template<class T>Shared_Ptr make_Shared(size_t nsize, HANDLE hprocess) { return Shared_Ptr(sizeof(T) * nsize, hprocess); }
 template<class BinFunc>
-inline size_t GetFunctionSize(const BinFunc& func) {
+INLINE size_t GetFunctionSize(const BinFunc& func) {
     auto p = (PBYTE)func;
     for (int i = 0, len = 0; i < 4096; i++) {
         if (p[i] == 0xC2) {
@@ -178,7 +179,7 @@ template<class T>struct has_type<T, T> { static constexpr bool value = true; }; 
 template<class T1, class ...Args>constexpr bool has_type_v = has_type<T1, Args...>::value;
 template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer  移除const指针
 template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer   移除const指针
-template<class Tx, class Ty> inline size_t _ucsicmp(const Tx * str1, const Ty * str2) {//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
+template<class Tx, class Ty> INLINE size_t _ucsicmp(const Tx * str1, const Ty * str2) {//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
     if (!str1 || !str2) throw std::exception("str1 or str2 is nullptr");
     std::wstring wstr1{}, wstr2{};
     std::string  strtemp{};
@@ -206,15 +207,15 @@ private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
     std::atomic_bool bflag=false;
     GenericHandle<HANDLE, NormalHandle> hEvent;
-    static inline std::shared_ptr<T> CreateInstance() {
+    static INLINE std::shared_ptr<T> CreateInstance() {
         return std::make_shared<T>();
     }
     template <class... Args>
-    static inline std::shared_ptr<T> CreateInstance(Args&& ...args) {
+    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) {
         return std::make_shared<T>(args...);
     }
     template <class... Args>
-    inline static T& GetInstanceImpl(Args&& ...args) {
+    INLINE static T& GetInstanceImpl(Args&& ...args) {
         static std::once_flag flag{};
         static std::shared_ptr<T> instance = nullptr;
         if (!instance) {
@@ -229,7 +230,7 @@ private:
             return *instance.get();
         }
     }
-    inline static T& GetInstanceImpl() {
+    INLINE static T& GetInstanceImpl() {
         static std::once_flag flag{};
         static std::shared_ptr<T> instance = nullptr;
         if (!instance) {
@@ -256,7 +257,7 @@ public:
     ~SingleTon() { 
     }
     template <class... Args>
-    inline static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
+    INLINE static T& GetInstance(Args&& ...args) {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
         return GetInstanceImpl(args...);
     }   
 };
@@ -381,7 +382,7 @@ public:
     LPVOID OriginalEip;					//x64:0X40	 |->x86:0x38
 }*PINJECT_DATA_CONTEXT;
 #if defined _WIN64
-inline BYTE ContextInjectShell[] = {			//x64.asm
+INLINE BYTE ContextInjectShell[] = {			//x64.asm
     0x50,								//push	rax
     0x53,								//push	rbx
     0x9c,								//pushfq							//保存flag寄存器    save flag register
@@ -402,7 +403,7 @@ inline BYTE ContextInjectShell[] = {			//x64.asm
     0xc3,								//retn		
 };
 #else
-inline BYTE ContextInjectShell[] = {	//x86.asm
+INLINE BYTE ContextInjectShell[] = {	//x86.asm
     0x50,								//push	eax
     0x60,								//pushad
     0x9c,								//pushfd
@@ -510,126 +511,125 @@ public:
     ThreadSafeVector(const ThreadSafeVector& other) {
         m_vector = other.m_vector;
     }
-    ThreadSafeVector(size_t size) {
+    INLINE ThreadSafeVector(size_t size) {
         m_vector.resize(size);
     }
-    ThreadSafeVector& operator=(const ThreadSafeVector& other) {
+    INLINE ThreadSafeVector& operator=(const ThreadSafeVector& other) {
         m_vector = other.m_vector;
         return *this;
     }
-    ThreadSafeVector(ThreadSafeVector&& other) {
+    INLINE ThreadSafeVector(ThreadSafeVector&& other) {
         m_vector = std::move(other.m_vector);
     }
-    ThreadSafeVector& operator=(ThreadSafeVector&& other) {
+    INLINE ThreadSafeVector& operator=(ThreadSafeVector&& other) {
         m_vector = std::move(other.m_vector);
         return *this;
     }
-    ~ThreadSafeVector() = default;
-    void push_back(const T& value) {
+    INLINE ~ThreadSafeVector() = default;
+    INLINE void push_back(const T& value) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.push_back(value);
     }
-    void push_back(T&& value) {
+    INLINE void push_back(T&& value) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.push_back(std::move(value));
     }
     //emplace back
     template<class... Args>
-    void emplace_back(Args&&... args) {
+    INLINE void emplace_back(Args&&... args) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.emplace_back(std::forward<Args>(args)...);
     }
-    void pop_back() {
+    INLINE void pop_back() {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.pop_back();
     }
-    void clear() {
+    INLINE void clear() {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.clear();
     }
     //data
-    decltype(auto) data() {
+    INLINE decltype(auto) data() {
         std::lock_guard<std::mutex> lock(m_mutex);
         return m_vector.data();
     }
-    T& operator[](size_t index) {
+    INLINE T& operator[](size_t index) {
         return m_vector[index];
     }
-    const T& operator[](size_t index) const {
+    INLINE const T& operator[](size_t index) const {
         return m_vector[index];
     }
-    size_t size() const {
+    INLINE size_t size() const {
         return m_vector.size();
     }
-    void reserve(size_t size) {
+    INLINE void reserve(size_t size) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.reserve(size);
     }
     //resize
-    void resize(size_t size) {
+    INLINE void resize(size_t size) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.resize(size);
     }
-    void assign(size_t size, const T& value) {
+    INLINE void assign(size_t size, const T& value) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.assign(size, value);
     }
-    void assign(std::initializer_list<T> list) {
+    INLINE void assign(std::initializer_list<T> list) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.assign(list);
     }
     //迭代器assign  iterator assign
     template<class InputIt>
-    void assign(InputIt first, InputIt last) {
+    INLINE void assign(InputIt first, InputIt last) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.assign(first, last);
     }
-    bool empty() const
-    {
+    INLINE bool empty() const{
         return m_vector.empty();
     }
-    void safe_erase(typename std::vector<T>::iterator it) {
+    INLINE void safe_erase(typename std::vector<T>::iterator it) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.erase(it);
     }
     //不安全的删除  unsafe erase
-    void erase(typename std::vector<T>::iterator it) {
+    INLINE void erase(typename std::vector<T>::iterator it) {
         m_vector.erase(it);
     }
     //unsafe
-    decltype(auto)  begin()const {
+    INLINE decltype(auto)  begin()const {
         return m_vector.begin();
     }
-    decltype(auto)  begin() {
+    INLINE decltype(auto)  begin() {
         return m_vector.begin();
     }
-    decltype(auto) end()const {
+    INLINE decltype(auto) end()const {
         return m_vector.end();
     }
-    decltype(auto)  end() {
+    INLINE decltype(auto)  end() {
         return m_vector.end();
     }
     //crbegin
-    decltype(auto) crbegin() {
+    INLINE decltype(auto) crbegin() {
         return m_vector.crbegin();
     }
-    decltype(auto) crend() {
+    INLINE decltype(auto) crend() {
         return m_vector.crend();
     }
-    void unsafe_erase(typename std::vector<T>::iterator it) {
+    INLINE void unsafe_erase(typename std::vector<T>::iterator it) {
         m_vector.erase(it);
     }
-    decltype(auto) cbegin() const {
+    INLINE decltype(auto) cbegin() const {
         return m_vector.begin();
     }
-    decltype(auto) cend() const {
+    INLINE decltype(auto) cend() const {
         return m_vector.end();
     }
 };
 #define POINTER_READ 0
 #define POINTER_WRITE 1
 template<class T>
-inline ThreadSafeVector<T> operator+(const ThreadSafeVector<T>&lhs, const ThreadSafeVector<T>&rhs) {
+INLINE ThreadSafeVector<T> operator+(const ThreadSafeVector<T>&lhs, const ThreadSafeVector<T>&rhs) {
     ThreadSafeVector<T> result;
     result.reserve(lhs.size() + rhs.size());
     for (size_t i = 0; i < lhs.size(); i++)result.push_back(lhs[i]);
@@ -644,18 +644,18 @@ class Process :public SingleTon<Process> {//Singleton   单例
     ThreadSafeVector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory    保存分配的内存的vector
     std::unordered_map<LPVOID, LPVOID> maptoorigin;//map for save original address and allocated address, key is allocated address value is original address    保存原始地址和分配地址的map，key是分配地址，value是原始地址
     template<typename T, typename ...Args>
-    void preprocess(T& arg, Args&...args) {//partially specialized template 部分特化模板
+    INLINE void preprocess(T& arg, Args&...args) {//partially specialized template 部分特化模板
         if constexpr (has_type_v<T,const char*,const wchar_t *>) preprocessparameter(arg);
         if constexpr (std::is_pointer_v<T> && !has_type_v<T,LPVOID,LPCVOID,const char*,const wchar_t*>)ProcessPtr(arg);
         if constexpr (sizeof...(args) > 0)preprocess(args...);
     }
     template<class T, typename ...Args>
-    void postprocess(T& arg, Args&...args) {
+    INLINE void postprocess(T& arg, Args&...args) {
         if (std::is_pointer_v<T> && !std::is_same_v<T, LPVOID> && !std::is_same_v<T, LPCVOID>)PostprocessPtr(arg);//post process pointer    后处理指针
         if constexpr (sizeof...(args) > 0)postprocess(args...);//keep process   继续处理
     }
     template<typename T>
-    void PostprocessPtr(T& ptr) {
+    INLINE void PostprocessPtr(T& ptr) {
         auto iter = maptoorigin.find((LPVOID)ptr);//find original address   查找原始地址
         if (iter != maptoorigin.end()) {
             LPVOID OriginAddr = iter->second;//original address   原始地址
@@ -665,8 +665,8 @@ class Process :public SingleTon<Process> {//Singleton   单例
         }
     }
     template<typename T>
-    void preprocessparameter(T& arg) {}
-    void preprocessparameter(const char*& arg) {
+    INLINE void preprocessparameter(T& arg) {}
+    INLINE void preprocessparameter(const char*& arg) {
         auto nlen = (int)strlen(arg) + 1;
         auto p = make_Shared<char>(nlen * sizeof(char), m_hProcess);
         if (p) {
@@ -675,7 +675,7 @@ class Process :public SingleTon<Process> {//Singleton   单例
             arg = (const char*)p.raw();
         }
     }//process const char* parameter    处理const char*参数
-    void preprocessparameter(const wchar_t*& arg){
+    INLINE void preprocessparameter(const wchar_t*& arg){
         auto nlen = (int)wcslen(arg) + 1;
         auto p = make_Shared<wchar_t>(nlen * sizeof(wchar_t), m_hProcess);
         if (p) {
@@ -685,7 +685,7 @@ class Process :public SingleTon<Process> {//Singleton   单例
         }
     }//process const wchar_t* parameter   处理const wchar_t*参数
     template<typename T>
-    void ProcessPtr(T& ptr) {
+    INLINE void ProcessPtr(T& ptr) {
         if (ptr) {
             int Size = sizeof(T);//get size of parameter    获取参数大小
             auto p = make_Shared<BYTE>(Size, m_hProcess);
@@ -698,7 +698,7 @@ class Process :public SingleTon<Process> {//Singleton   单例
         }
     }
 public:
-    void Attach(const char* _szProcessName) {//attach process   附加进程
+    INLINE void Attach(const char* _szProcessName) {//attach process   附加进程
         //get process id    获取进程id
         auto pid = GetProcessIdByName(_szProcessName);
         if (pid != 0) {
@@ -707,11 +707,11 @@ public:
             m_bAttached = true;
         }
     }
-    void ChangeMode(int Mode) {
+    INLINE void ChangeMode(int Mode) {
         m_RunningMode = Mode;
     }
     //readapi
-    ULONG _ReadApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//ReadProcessMemory
+    INLINE ULONG _ReadApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//ReadProcessMemory
         if (m_bAttached) {
             SIZE_T bytesRead = 0;
             ReadProcessMemory(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
@@ -720,7 +720,7 @@ public:
         return 0;
     }
     //writeapi
-    ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//WriteProcessMemory
+    INLINE ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//WriteProcessMemory
         if (m_bAttached) {
             SIZE_T bytesWritten = 0;
             WriteProcessMemory(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
@@ -729,7 +729,7 @@ public:
         return 0;
     }
     //allocmemapi
-    UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) {//return allocated memory address
+    INLINE UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) {//return allocated memory address
         if (m_bAttached) {
             auto allocatedMemory = VirtualAllocEx(m_hProcess, PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
             return reinterpret_cast<UDWORD>(allocatedMemory);
@@ -737,12 +737,12 @@ public:
         return 0;
     }
     //freememapi
-    int _FreeMemApi(LPVOID lpAddress) {//free memory
+    INLINE int _FreeMemApi(LPVOID lpAddress) {//free memory
         if (m_bAttached)return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
         return 0;
     }
     template<class PRE>
-    void EnumThread(PRE pre) {//enum thread through snapshot    通过快照枚举线程
+    INLINE void EnumThread(PRE pre) {//enum thread through snapshot    通过快照枚举线程
         if (m_bAttached) {
             auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (hSnapshot != INVALID_HANDLE_VALUE) {
@@ -759,7 +759,7 @@ public:
             }
         }
     }
-    void ClearMemory() {
+    INLINE void ClearMemory() {
         for (auto& p : m_vecAllocMem) p.Release();
         m_vecAllocMem.clear();
     }
@@ -823,7 +823,7 @@ public:
         return threadData.retdata;//return value    返回值
     }
     template <class _Fn>
-    decltype(auto) SetContextCallImpl(_Fn&& _Fx) {
+    INLINE decltype(auto) SetContextCallImpl(_Fn&& _Fx) {
         using RetType = std::common_type<decltype(_Fx())>::type;//return type is common type or not 返回类型是常见类型还是不是
         if (!m_bAttached) return RetType();//return default value   返回默认值
         Thread _thread{};
@@ -886,7 +886,7 @@ public:
         static constexpr bool value = decltype(test<T>(nullptr))::value;//is callable
     };
     template <class _Fn>
-    void SetContextCallNoReturnImpl(_Fn&& _Fx) {
+    INLINE void SetContextCallNoReturnImpl(_Fn&& _Fx) {
         using RetType = void;
         Thread _thread{};
         CONTEXT _ctx{};
@@ -938,7 +938,7 @@ public:
         CloseHandle(hEvent);//close event
     }
     template<class _Fn, class ...Arg>
-    void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) {
+    INLINE void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) {
         using RetType = void;
         if (!m_bAttached) return RetType();
         Thread _thread{};
@@ -994,7 +994,7 @@ public:
         if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
         maptoorigin.clear();//clear map
     }
-    decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) {
+    INLINE decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) {
         static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");
         auto retdata = SetContextCallImpl(_Fx, args...);
         using RetType = decltype(retdata);
@@ -1005,11 +1005,11 @@ public:
         return fut;
     }
     template<class T>
-    static T TONULL() { //return null value  返回空值
+    INLINE static T TONULL() { //return null value  返回空值
         return  reinterpret_cast<T>(0);
     }
 private:
-    inline DWORD GetProcessIdByName(const char* processName) {//get process id by name   通过名称获取进程id
+    INLINE DWORD GetProcessIdByName(const char* processName) {//get process id by name   通过名称获取进程id
         DWORD pid = 0;
         //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
         GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
