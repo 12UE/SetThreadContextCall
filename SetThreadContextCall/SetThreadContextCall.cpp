@@ -732,7 +732,7 @@ public:
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
         //创建事件  create event
-        auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
+        GenericHandle<HANDLE,NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址  get address
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
         auto pGetProcAddress = (LPVOID)GetProcAddress;
@@ -772,7 +772,7 @@ public:
             return Break;
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
-        CloseHandle(hEvent);//close event   关闭事件
+
         if(maptoorigin.size()>0)postprocess(args...);//post process parameter   后处理参数
         maptoorigin.clear();//clear map  清除map
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
@@ -791,7 +791,7 @@ public:
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
         //创建事件  create event
-        auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
+        GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址  get address
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
         auto pGetProcAddress = (LPVOID)GetProcAddress;
@@ -829,7 +829,6 @@ public:
             return Break;
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
-        CloseHandle(hEvent);//close event   关闭事件
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value 读取参数以返回值
         return threadData.retdata;//return value    返回值
     }
@@ -853,7 +852,7 @@ public:
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
         //创建事件  create event
-        auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
+        GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址  get address
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
         auto pGetProcAddress = (LPVOID)GetProcAddress;
@@ -891,7 +890,6 @@ public:
             return Break;
             });
         WaitForSingleObject(hEvent, INFINITE);//wait event
-        CloseHandle(hEvent);//close event
     }
     template<class _Fn, class ...Arg>
     INLINE void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
@@ -906,7 +904,7 @@ public:
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
         //创建事件
-        auto hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
+        GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址
         auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
         auto pGetProcAddress = (LPVOID)GetProcAddress;
@@ -946,7 +944,6 @@ public:
             return Break;
         });
         WaitForSingleObject(hEvent, INFINITE);//wait event
-        CloseHandle(hEvent);//close event
         if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
         maptoorigin.clear();//clear map
     }
