@@ -52,12 +52,10 @@ public:
     ~GenericHandle() {
         if (m_bOwner) {
             refcount--;
-            if (refcount <= 0) {
-                if (IsValid()) {
-                    Traits::Close(m_handle);
-                    m_handle= Traits::InvalidHandle();
-                    m_bOwner = false;
-                }
+            if (refcount <= 0&& IsValid()) {
+                Traits::Close(m_handle);
+                m_handle= Traits::InvalidHandle();
+                m_bOwner = false;
             }
         }
     }
