@@ -249,7 +249,7 @@ class ThreadDataBase {
 public:
     Fn fn;//function    函数
     char eventname[MAX_PATH];
-    char funcname[3][MAX_PATH];
+    char funcname[4][MAX_PATH];
     LPVOID pFunc[2];
 };
 template<class Fn, class T>
@@ -282,6 +282,9 @@ typedef HANDLE(WINAPI* POPENEVENTA)(
 typedef BOOL(WINAPI* PSETEVENT)(
     HANDLE hEvent
     );
+typedef BOOL(WINAPI* PCLOSEHANDLE)(
+    HANDLE hObject
+    );
 template <class Fn, class T>
 T ThreadFunction(void* param) noexcept {
     auto threadData = static_cast<ThreadData<Fn, T>*>(param);
@@ -293,6 +296,8 @@ T ThreadFunction(void* param) noexcept {
     auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname); //打开事件  open event
     auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);//设置事件  set event
     pSetEvent(hEventHandle);
+    auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
+    pCloseHandle(hEventHandle);
     return threadData->retdata;
 }
 template <class Fn, class T>
@@ -306,6 +311,8 @@ void ThreadFunctionNoReturn(void* param) noexcept {
     auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);    //打开事件  open event
     auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);    //设置事件  set event
     pSetEvent(hEventHandle);
+    auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
+    pCloseHandle(hEventHandle);
 }
 template <class Fn, class T, class... Args>
 decltype(auto) ThreadFunction2(void* param) noexcept {
@@ -316,11 +323,13 @@ decltype(auto) ThreadFunction2(void* param) noexcept {
         }(std::make_index_sequence<sizeof...(Args)>{});
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        auto hEvent = pLoadLibrary(threadData->funcname[0]);
-        auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);        //加载OpenEventA    load OpenEventA
+        auto ntdll = pLoadLibrary(threadData->funcname[0]);
+        auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);        //加载OpenEventA    load OpenEventA
         auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);        //打开事件  open event
-        auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);        //设置事件  set event
+        auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);        //设置事件  set event
         pSetEvent(hEventHandle);
+        auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
+        pCloseHandle(hEventHandle);
         return ret;
 }
 template <class Fn, class T, class... Args>
@@ -336,6 +345,8 @@ void ThreadFunction2NoReturn(void* param) noexcept {
         auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);        //打开事件  open event
         auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);       //设置事件  set event
         pSetEvent(hEventHandle);
+        auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
+        pCloseHandle(hEventHandle);
 }
 //代码来自于<加密与解密>有关劫持线程注入的代码 code from <加密与解密> about thread hijacking injection
 typedef class DATA_CONTEXT {
@@ -731,6 +742,7 @@ public:
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
+        strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件  create event
         GenericHandle<HANDLE,NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址  get address
@@ -790,6 +802,7 @@ public:
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
+        strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件  create event
         GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址  get address
@@ -851,6 +864,7 @@ public:
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
+        strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件  create event
         GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址  get address
@@ -903,6 +917,7 @@ public:
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
         strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
         strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
+        strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件
         GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
         //获取地址
