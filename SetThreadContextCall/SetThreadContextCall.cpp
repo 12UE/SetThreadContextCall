@@ -22,14 +22,14 @@ using UDWORD = DWORD64;
 using UDWORD = DWORD32;
 #define XIP Eip//instruction pointer
 #endif
-class NormalHandle {
+class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值 clarify the handle close method and the invalid value of the handle
 public:
     INLINE  static void Close(HANDLE handle)NOEXCEPT {CloseHandle(handle);}
     INLINE static HANDLE InvalidHandle()NOEXCEPT {return INVALID_HANDLE_VALUE;}
     INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle;}
 };
 template<class T, class Traits>
-class GenericHandle {
+class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
 private:
     T m_handle = Traits::InvalidHandle();
     bool m_bOwner = false;//所有者 owner
@@ -37,15 +37,15 @@ private:
 public:
     GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner){}//构造 m_bOwner默认为true construct m_bOwner default is true
     ~GenericHandle(){
-        if (m_bOwner&& IsValid()){
-          Traits::Close(m_handle);
-          m_handle= Traits::InvalidHandle();
-          m_bOwner = false;
+        if (m_bOwner&& IsValid()){//当句柄的所有者为true并且句柄有效时 When the handle owner is true and the handle is valid
+          Traits::Close(m_handle);//关闭句柄 close handle
+          m_handle= Traits::InvalidHandle();//设置句柄为无效值 set handle to invalid value
+          m_bOwner = false;//设置句柄所有者为false set handle owner to false
         }
     }
-    GenericHandle(GenericHandle&) = delete;
-    GenericHandle& operator =(const GenericHandle&) = delete;
-    INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {
+    GenericHandle(GenericHandle&) = delete;//禁止拷贝构造函数 disable copy constructor
+    GenericHandle& operator =(const GenericHandle&) = delete;//禁止拷贝赋值函数 disable copy assignment
+    INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {   //移动赋值 move assignment
         if (this != &other){
             m_handle = other.m_handle;
             m_bOwner = other.m_bOwner;
@@ -54,16 +54,16 @@ public:
         }
         return *this;
     }
-    INLINE GenericHandle(GenericHandle&& other)NOEXCEPT {
+    INLINE GenericHandle(GenericHandle&& other)NOEXCEPT {//移动构造 move construct
         m_handle = other.m_handle;
         m_bOwner = other.m_bOwner;
         other.m_handle = Traits::InvalidHandle();
         other.m_bOwner = false;
     }
-    INLINE operator T() NOEXCEPT {
+    INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
         return m_handle;
     }
-    INLINE operator bool() NOEXCEPT {
+    INLINE operator bool() NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
         return IsValid();
     }
 };
@@ -74,11 +74,11 @@ class Shared_Ptr {
     void AddRef() NOEXCEPT {
         refCount++;
     }
-    INLINE UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) NOEXCEPT {
+    INLINE UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) NOEXCEPT {//远程分配内存 remote allocate memory
         auto allocatedMemory = VirtualAllocEx(m_hProcess, PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         return reinterpret_cast<UDWORD>(allocatedMemory);
     }
-    INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {
+    INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//远程释放内存 remote free memory
         return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
     }
 public:
@@ -112,15 +112,15 @@ public:
         return BaseAddress;
     }
     INLINE LPVOID raw() NOEXCEPT {return BaseAddress;}
-    INLINE UDWORD getUDWORD() NOEXCEPT {
+    INLINE UDWORD getUDWORD() NOEXCEPT {//返回远程地址的UDWORD值 return UDWORD value of remote address
         AddRef();
         return (UDWORD)BaseAddress;
     }
     INLINE ~Shared_Ptr() NOEXCEPT { Release();}
-    INLINE void Release() NOEXCEPT {//release and refCount--
+    INLINE void Release() NOEXCEPT {//release and refCount-- 引用计数减一
         refCount--;
         if (BaseAddress && refCount <= 0){
-            _FreeMemApi(BaseAddress);
+            _FreeMemApi(BaseAddress);//当引用计数小于等于0时释放内存 free memory when refCount less than or equal to 0
             BaseAddress = nullptr;
         }
     }
@@ -128,7 +128,7 @@ public:
 };
 template<class T>Shared_Ptr make_Shared(size_t nsize, HANDLE hprocess) NOEXCEPT { return Shared_Ptr(sizeof(T) * nsize, hprocess); }
 template<class BinFunc>
-INLINE size_t GetFunctionSize(const BinFunc& func) NOEXCEPT {
+INLINE size_t GetFunctionSize(const BinFunc& func) NOEXCEPT {//获取函数大小,纯属经验之谈 get function size,just experience
     auto p = (PBYTE)func;
     for (int i = 0, len = 0; i < 4096; i++){
         if (p[i] == 0xC2){
@@ -189,9 +189,9 @@ private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
     std::atomic_bool bflag=false;
     GenericHandle<HANDLE, NormalHandle> hEvent;
-    static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT {return std::make_shared<T>();}
+    static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT {return std::make_shared<T>();}//创建一个类的实例 create a instance of class
     template <class... Args>
-    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT {return std::make_shared<T>(args...);}
+    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT {return std::make_shared<T>(args...);}//用参数构造一个类的实例 create a instance of class by parameters
     template <class... Args>
     INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
         static std::once_flag flag{};
