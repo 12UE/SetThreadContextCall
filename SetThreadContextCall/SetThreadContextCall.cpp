@@ -745,18 +745,15 @@ public:
     template<class PRE>
     INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
         if (m_bAttached){
-            auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-            if (hSnapshot != INVALID_HANDLE_VALUE){
+            GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if (hSnapshot){
                 THREADENTRY32 threadEntry = { sizeof(THREADENTRY32), };
-                if (Thread32First(hSnapshot, &threadEntry)){
-                    do {
-                        if (threadEntry.th32OwnerProcessID == m_pid){
-                            Thread thread(threadEntry);
-                            if (thread.IsRunning())if (pre(threadEntry) == Break)break;
-                        }
-                    } while (Thread32Next(hSnapshot, &threadEntry));
+                for (auto bRet = Thread32First(hSnapshot, &threadEntry); bRet; bRet = Thread32Next(hSnapshot, &threadEntry)) {
+                    if (threadEntry.th32OwnerProcessID == m_pid) {
+                        Thread thread(threadEntry);
+                        if (thread.IsRunning())if (pre(threadEntry) == Break)break;
+                    }
                 }
-                CloseHandle(hSnapshot);
             }
         }
     }
