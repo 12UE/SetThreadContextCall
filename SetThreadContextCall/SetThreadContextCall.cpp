@@ -45,6 +45,9 @@ private:
     void addref() {
         refcount++;
     }
+    bool IsValid() {
+        return Traits::IsValid(m_handle);
+    }
 public:
     //构造 m_bOwner默认为true construct m_bOwner default is true
     GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
@@ -92,8 +95,8 @@ public:
         addref();
         return m_handle;
     }
-    bool IsValid() {
-        return Traits::IsValid(m_handle);
+    operator bool() {
+        return IsValid();
     }
 };
 class Shared_Ptr {
@@ -271,7 +274,7 @@ public:
         hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
         //检查互斥量是否已经被创建 check event is created
         bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
-        if (!hEvent.IsValid())throw std::exception("CreateEventA failed");
+        if (!hEvent)throw std::exception("CreateEventA failed");
     }
     ~SingleTon() { 
     }
@@ -1033,7 +1036,7 @@ private:
         DWORD pid = 0;
         //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
         GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (hSnapshot.IsValid()) {
+        if (hSnapshot) {
             PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
             //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name is processName
             for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)) {
