@@ -751,7 +751,7 @@ public:
             threadData.fn = _Fx;
             threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
             auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address  获取函数地址
-            int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+            auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
             auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
             m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
             _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
@@ -808,7 +808,7 @@ public:
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
             threadData.fn = _Fx;
             auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType>;//get function address 获取函数地址
-            int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+            auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
             auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
             m_vecAllocMem.emplace_back(lpFunction);
             _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
@@ -870,7 +870,7 @@ public:
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
             threadData.fn = _Fx;
             auto pFunction = &ThreadFunctionNoReturn<std::decay_t<_Fn>, RetType>;//get function address 获取函数地址
-            int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+            auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
             auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
             m_vecAllocMem.emplace_back(lpFunction);
             _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
