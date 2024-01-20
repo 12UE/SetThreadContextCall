@@ -38,9 +38,7 @@ private:
     T m_handle = Traits::InvalidHandle();
     //所有者 owner
     bool m_bOwner = false;
-    bool IsValid() {
-        return Traits::IsValid(m_handle);
-    }
+    inline bool IsValid() { return Traits::IsValid(m_handle);}
 public:
     //构造 m_bOwner默认为true construct m_bOwner default is true
     GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
@@ -55,7 +53,7 @@ public:
     GenericHandle(GenericHandle&) = delete;
     GenericHandle& operator =(const GenericHandle&) = delete;
     //右值引用右值赋值 move assignment
-    GenericHandle& operator =(GenericHandle&& other) {
+    inline GenericHandle& operator =(GenericHandle&& other) {
         if (this != &other) {
             m_handle = other.m_handle;
             m_bOwner = other.m_bOwner;
@@ -65,16 +63,16 @@ public:
         return *this;
     }
     //右值引用右值构造 move construct
-    GenericHandle(GenericHandle&& other) {
+    inline GenericHandle(GenericHandle&& other) {
         m_handle = other.m_handle;
         m_bOwner = other.m_bOwner;
         other.m_handle = Traits::InvalidHandle();
         other.m_bOwner = false;
     }
-    operator T() {
+    inline operator T() {
         return m_handle;
     }
-    operator bool() {
+    inline operator bool() {
         return IsValid();
     }
 };
