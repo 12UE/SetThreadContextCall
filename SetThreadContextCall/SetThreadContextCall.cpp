@@ -38,10 +38,6 @@ private:
     T m_handle = Traits::InvalidHandle();
     //所有者 owner
     bool m_bOwner = false;
-    std::atomic_int refcount=0;
-    void addref() {
-        refcount++;
-    }
     bool IsValid() {
         return Traits::IsValid(m_handle);
     }
@@ -51,8 +47,7 @@ public:
     //析构
     ~GenericHandle() {
         if (m_bOwner) {
-            refcount--;
-            if (refcount <= 0&& IsValid()) {
+            if (IsValid()) {
                 Traits::Close(m_handle);
                 m_handle= Traits::InvalidHandle();
                 m_bOwner = false;
@@ -66,11 +61,8 @@ public:
         if (this != &other) {
             m_handle = other.m_handle;
             m_bOwner = other.m_bOwner;
-            bool bOwner = other.m_bOwner;
-            refcount=bOwner;
             other.m_handle = Traits::InvalidHandle();
             other.m_bOwner = false;
-            other.refcount = 0;
         }
         return *this;
     }
@@ -78,19 +70,14 @@ public:
     GenericHandle(GenericHandle&& other) {
         m_handle = other.m_handle;
         m_bOwner = other.m_bOwner;
-        bool bOwner = other.m_bOwner;
-        refcount = bOwner;
         other.m_handle = Traits::InvalidHandle();
         other.m_bOwner = false;
-        other.refcount = 0;
     }
     //获取句柄 get handle
     T GetHandle() {
-        addref();
         return m_handle;
     }
     operator T() {
-        addref();
         return m_handle;
     }
     operator bool() {
@@ -478,7 +465,7 @@ public:
     }
     ~Thread() {}
     //获取线程句柄  get thread handle
-    HANDLE GetHandle() { return m_GenericHandleThread.GetHandle(); }
+    HANDLE GetHandle() { return m_GenericHandleThread; }
     bool IsRunning() {
         //获取线程退出代码  get thread exit code
         DWORD dwExitCode = 0;
@@ -689,7 +676,7 @@ class Process :public SingleTon<Process> {//Singleton   单例
     void preprocessparameter(T& arg) {}
     void preprocessparameter(const char*& arg) {
         auto nlen = (int)strlen(arg) + 1;
-        auto p = make_Shared<char>(nlen * sizeof(char), m_hProcess.GetHandle());
+        auto p = make_Shared<char>(nlen * sizeof(char), m_hProcess);
         if (p) {
             m_vecAllocMem.push_back(p);
             _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
@@ -698,7 +685,7 @@ class Process :public SingleTon<Process> {//Singleton   单例
     }//process const char* parameter    处理const char*参数
     void preprocessparameter(const wchar_t*& arg){
         auto nlen = (int)wcslen(arg) + 1;
-        auto p = make_Shared<wchar_t>(nlen * sizeof(wchar_t), m_hProcess.GetHandle());
+        auto p = make_Shared<wchar_t>(nlen * sizeof(wchar_t), m_hProcess);
         if (p) {
             m_vecAllocMem.push_back(p);
             _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(wchar_t));
@@ -709,7 +696,7 @@ class Process :public SingleTon<Process> {//Singleton   单例
     void ProcessPtr(T& ptr) {
         if (ptr) {
             int Size = sizeof(T);//get size of parameter    获取参数大小
-            auto p = make_Shared<BYTE>(Size, m_hProcess.GetHandle());
+            auto p = make_Shared<BYTE>(Size, m_hProcess);
             if (p) {
                 m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory   emplace back到vector中避免内存泄漏可以通过clearmemory清除
                 _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer   写入值到分配地址，因为参数是指针
@@ -735,7 +722,7 @@ public:
     ULONG _ReadApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//ReadProcessMemory
         if (m_bAttached) {
             SIZE_T bytesRead = 0;
-            ReadProcessMemory(m_hProcess.GetHandle(), lpBaseAddress, lpBuffer, nSize, &bytesRead);
+            ReadProcessMemory(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
             return bytesRead;
         }
         return 0;
@@ -744,7 +731,7 @@ public:
     ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) {//WriteProcessMemory
         if (m_bAttached) {
             SIZE_T bytesWritten = 0;
-            WriteProcessMemory(m_hProcess.GetHandle(), lpBaseAddress, lpBuffer, nSize, &bytesWritten);
+            WriteProcessMemory(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
             return bytesWritten;
         }
         return 0;
@@ -752,14 +739,14 @@ public:
     //allocmemapi
     UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) {//return allocated memory address
         if (m_bAttached) {
-            auto allocatedMemory = VirtualAllocEx(m_hProcess.GetHandle(), PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            auto allocatedMemory = VirtualAllocEx(m_hProcess, PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
             return reinterpret_cast<UDWORD>(allocatedMemory);
         }
         return 0;
     }
     //freememapi
     int _FreeMemApi(LPVOID lpAddress) {//free memory
-        if (m_bAttached)return VirtualFreeEx(m_hProcess.GetHandle(), lpAddress, 0, MEM_RELEASE);
+        if (m_bAttached)return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
         return 0;
     }
     template<class PRE>
@@ -808,7 +795,7 @@ public:
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
             auto ctx = thread.GetContext();//get context    获取上下文
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess.GetHandle());//allocate memory   分配内存
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory   分配内存
             m_vecAllocMem.emplace_back(lpShell);//
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
@@ -817,13 +804,13 @@ public:
             threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
             auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address  获取函数地址
             int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
-            auto lpFunction = make_Shared<BYTE>(length, m_hProcess.GetHandle());//allocate memory for function  分配内存
+            auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
             m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
             _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
             dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address  设置函数地址
             dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
             using parametertype = decltype(threadData);
-            auto lpParameter = make_Shared<parametertype>(1, m_hProcess.GetHandle());//allocate memory for parameter    分配内存
+            auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
             m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
             _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
             dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
@@ -867,7 +854,7 @@ public:
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
             auto ctx = thread.GetContext();//get context    获取上下文
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess.GetHandle());//allocate memory for datacontext   分配内存
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
             m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
@@ -929,7 +916,7 @@ public:
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
             auto ctx = thread.GetContext();//get context    获取上下文
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess.GetHandle());//allocate memory for datacontext   分配内存
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
             m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
@@ -982,7 +969,7 @@ public:
             auto thread = Thread(te32);//construct thread
             thread.Suspend();//suspend thread
             auto ctx = thread.GetContext();//get context
-            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess.GetHandle());//allocate memory
+            auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory
             m_vecAllocMem.emplace_back(lpShell);//
             DATA_CONTEXT dataContext{};
             memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
