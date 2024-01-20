@@ -22,11 +22,8 @@ using UDWORD = DWORD32;
 #endif
 class NormalHandle {
 public:
-    inline static void Close(HANDLE& handle) {
-        if (IsValid(handle)) {
+    inline static void Close(HANDLE handle) {
             CloseHandle(handle);
-            handle = InvalidHandle();
-        }
     }
     inline static HANDLE InvalidHandle() {
         return INVALID_HANDLE_VALUE;
@@ -56,8 +53,11 @@ public:
         if (m_bOwner) {
             refcount--;
             if (refcount <= 0) {
-                Traits::Close(m_handle);
-                m_bOwner = false;
+                if (IsValid()) {
+                    Traits::Close(m_handle);
+                    m_handle= Traits::InvalidHandle();
+                    m_bOwner = false;
+                }
             }
         }
     }
