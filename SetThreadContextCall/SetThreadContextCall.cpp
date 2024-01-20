@@ -46,12 +46,10 @@ public:
     GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}
     //Îö¹¹
     ~GenericHandle() {
-        if (m_bOwner) {
-            if (IsValid()) {
-                Traits::Close(m_handle);
-                m_handle= Traits::InvalidHandle();
-                m_bOwner = false;
-            }
+        if (m_bOwner&& IsValid()) {
+          Traits::Close(m_handle);
+          m_handle= Traits::InvalidHandle();
+          m_bOwner = false;
         }
     }
     GenericHandle(GenericHandle&) = delete;
@@ -72,10 +70,6 @@ public:
         m_bOwner = other.m_bOwner;
         other.m_handle = Traits::InvalidHandle();
         other.m_bOwner = false;
-    }
-    //»ñÈ¡¾ä±ú get handle
-    T GetHandle() {
-        return m_handle;
     }
     operator T() {
         return m_handle;
