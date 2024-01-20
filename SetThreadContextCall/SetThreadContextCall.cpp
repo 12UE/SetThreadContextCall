@@ -111,7 +111,7 @@ public:
         AddRef();
         return BaseAddress;
     }
-    INLINE LPVOID raw() NOEXCEPT {return BaseAddress;}
+    INLINE LPVOID raw() const NOEXCEPT {return BaseAddress;}
     INLINE UDWORD getUDWORD() NOEXCEPT {//返回远程地址的UDWORD值 return UDWORD value of remote address
         AddRef();
         return (UDWORD)BaseAddress;
@@ -196,12 +196,12 @@ private:
     INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
         static std::once_flag flag{};
         static std::shared_ptr<T> instance = nullptr;
-        if (!instance) NOEXCEPT {
-            std::call_once(flag, [&]() NOEXCEPT {//call once
+        if (!instance){
+            std::call_once(flag, [&](){//call once
                 instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
             });
         }
-        if (instance->bflag) NOEXCEPT {
+        if (instance->bflag){
             throw std::exception("SingleTon has been created");
         }else {
             return *instance.get();
@@ -231,7 +231,7 @@ public:
         bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
         if (!hEvent)throw std::exception("CreateEventA failed");
     }
-    ~SingleTon() NOEXCEPT { }
+    ~SingleTon(){ }
     template <class... Args>
     INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
         return GetInstanceImpl(args...);
@@ -340,10 +340,10 @@ void ThreadFunction2NoReturn(void* param) noexcept {
         }(std::make_index_sequence<sizeof...(Args)>{});
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        auto hEvent = pLoadLibrary(threadData->funcname[0]);
-        auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);        //加载OpenEventA    load OpenEventA
+        auto ntdll = pLoadLibrary(threadData->funcname[0]);
+        auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);        //加载OpenEventA    load OpenEventA
         auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);        //打开事件  open event
-        auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);       //设置事件  set event
+        auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);       //设置事件  set event
         pSetEvent(hEventHandle);
         auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
         pCloseHandle(hEventHandle);
