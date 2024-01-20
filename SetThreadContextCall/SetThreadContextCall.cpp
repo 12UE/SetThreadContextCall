@@ -827,7 +827,7 @@ public:
             thread.Resume();//resume thread  恢复线程
             _thread = std::move(thread);//store thread  存储线程
             return Break;
-            });
+        });
         WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value 读取参数以返回值
         return threadData.retdata;//return value    返回值
