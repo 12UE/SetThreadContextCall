@@ -130,10 +130,10 @@ public:
     void* ptr;
     FreeBlock* next;
 };
-BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {
+BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {//远程释放内存 remote free memory
     return VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);
 }
-LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {
+LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
     return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);
 }
 class FreeBlockList:public SingleTon<FreeBlockList> {
