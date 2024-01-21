@@ -24,29 +24,29 @@ using UDWORD = DWORD32;
 #endif
 class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值 clarify the handle close method and the invalid value of the handle
 public:
-    INLINE  static void Close(HANDLE handle)NOEXCEPT {CloseHandle(handle);}
-    INLINE static HANDLE InvalidHandle()NOEXCEPT {return INVALID_HANDLE_VALUE;}
-    INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle;}
+    INLINE  static void Close(HANDLE handle)NOEXCEPT { CloseHandle(handle); }
+    INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }
+    INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }
 };
 template<class T, class Traits>
 class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
 private:
     T m_handle = Traits::InvalidHandle();
     bool m_bOwner = false;//所有者 owner
-    INLINE bool IsValid()NOEXCEPT { return Traits::IsValid(m_handle);}
+    INLINE bool IsValid()NOEXCEPT { return Traits::IsValid(m_handle); }
 public:
-    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner){}//构造 m_bOwner默认为true construct m_bOwner default is true
-    ~GenericHandle(){
-        if (m_bOwner&& IsValid()){//当句柄的所有者为true并且句柄有效时 When the handle owner is true and the handle is valid
-          Traits::Close(m_handle);//关闭句柄 close handle
-          m_handle= Traits::InvalidHandle();//设置句柄为无效值 set handle to invalid value
-          m_bOwner = false;//设置句柄所有者为false set handle owner to false
+    GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}//构造 m_bOwner默认为true construct m_bOwner default is true
+    ~GenericHandle() {
+        if (m_bOwner && IsValid()) {//当句柄的所有者为true并且句柄有效时 When the handle owner is true and the handle is valid
+            Traits::Close(m_handle);//关闭句柄 close handle
+            m_handle = Traits::InvalidHandle();//设置句柄为无效值 set handle to invalid value
+            m_bOwner = false;//设置句柄所有者为false set handle owner to false
         }
     }
     GenericHandle(GenericHandle&) = delete;//禁止拷贝构造函数 disable copy constructor
     GenericHandle& operator =(const GenericHandle&) = delete;//禁止拷贝赋值函数 disable copy assignment
     INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {   //移动赋值 move assignment
-        if (this != &other){
+        if (this != &other) {
             m_handle = other.m_handle;
             m_bOwner = other.m_bOwner;
             other.m_handle = Traits::InvalidHandle();
@@ -67,6 +67,152 @@ public:
         return IsValid();
     }
 };
+#define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&)=delete;TYPE(TYPE&&) = delete;void operator= (const TYPE&) = delete;void operator= (TYPE&&) = delete;
+template<typename T >
+class SingleTon {
+private:
+    DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
+        std::atomic_bool bflag = false;
+    GenericHandle<HANDLE, NormalHandle> hEvent;
+    static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT { return std::make_shared<T>(); }//创建一个类的实例 create a instance of class
+    template <class... Args>
+    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT { return std::make_shared<T>(args...); }//用参数构造一个类的实例 create a instance of class by parameters
+    template <class... Args>
+    INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
+        static std::once_flag flag{};
+        static std::shared_ptr<T> instance = nullptr;
+        if (!instance) {
+            std::call_once(flag, [&]() {//call once
+                instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
+                });
+        }
+        if (instance->bflag) {
+            throw std::exception("SingleTon has been created");
+        }
+        else {
+            return *instance.get();
+        }
+    }
+    INLINE static T& GetInstanceImpl() NOEXCEPT {
+        static std::once_flag flag{};
+        static std::shared_ptr<T> instance = nullptr;
+        if (!instance) {
+            std::call_once(flag, [&]() {//call once
+                instance = CreateInstance();//element constructor through parameters    通过参数构造元素
+                });
+        }
+        if (instance->bflag) {
+            throw std::exception("SingleTon has been created");
+        }
+        else {
+            return *instance.get();
+        }
+    }
+public:
+    SingleTon() {
+        //按类名的typeid作为事件名 create event name by typeid
+        std::string eventname = typeid(T).name();
+        //创建互斥量 create event
+        hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
+        //检查互斥量是否已经被创建 check event is created
+        bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
+        if (!hEvent)throw std::exception("CreateEventA failed");
+    }
+    ~SingleTon() { }
+    template <class... Args>
+    INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
+        return GetInstanceImpl(args...);
+    }
+};
+
+class FreeBlock {
+public:
+    size_t size;
+    void* ptr;
+    FreeBlock* next;
+};
+
+class FreeBlockList:public SingleTon<FreeBlockList> {
+public:
+    FreeBlockList(HANDLE hprocess=GetCurrentProcess()) : m_head(nullptr) {
+        m_hProcess = hprocess;
+    }
+
+    ~FreeBlockList() {
+        FreeBlock* block = m_head;
+        while (block) {
+            FreeBlock* next = block->next;
+            VirtualFreeEx(m_hProcess,block->ptr, 0, MEM_RELEASE);
+            delete block;
+            block = next;
+        }
+    }
+
+    void Add(void* ptr, size_t size) {
+        FreeBlock* block = new FreeBlock();
+        block->ptr = ptr;
+        block->size = size;
+        block->next = m_head;
+        m_head = block;
+    }
+
+    void* Get(size_t size) {
+        FreeBlock** p = &m_head;
+        while (*p) {
+            if ((*p)->size >= size) {
+                FreeBlock* block = *p;
+                if (block->size > size) {
+                    // 如果块的大小大于请求的大小，那么我们需要分割这个块
+                    FreeBlock* newBlock = new FreeBlock();
+                    newBlock->ptr = (char*)block->ptr + size;
+                    newBlock->size = block->size - size;
+                    newBlock->next = block->next;
+                    *p = newBlock;
+                }
+                else {
+                    // 否则，我们只需删除这个块
+                    *p = block->next;
+                }
+                return block->ptr;
+            }
+            p = &(*p)->next;
+        }
+
+        // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存
+        size_t allocSize = (size > 0x1000) ? size : 0x1000;
+        void* ptr = VirtualAllocEx(m_hProcess,(LPVOID)nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        if (ptr == nullptr) {
+            std::cerr << "VirtualAlloc failed." << std::endl;
+            return nullptr;
+        }
+        Add(ptr, allocSize);
+        return Get(size);  // 重新尝试获取内存
+    }
+
+    void Free(void* ptr, size_t size) {
+        Add(ptr, size);
+    }
+
+private:
+    FreeBlock* m_head;
+    HANDLE m_hProcess;//view
+};
+std::unordered_map<void*, size_t> g_allocMap;
+void* mallocex(HANDLE hProcess,size_t size) {
+    void* ptr = FreeBlockList::GetInstance(hProcess).Get(size);
+    g_allocMap[ptr] = size;
+    return ptr;
+}
+void freeex(HANDLE hProcess,void* ptr) {
+    auto it = g_allocMap.find(ptr);
+    if (it == g_allocMap.end()) {
+        std::cerr << "freeex: invalid pointer." << std::endl;
+        return;
+    }
+    FreeBlockList::GetInstance(hProcess).Free(ptr, it->second);
+    g_allocMap.erase(it);
+    
+}
 class Shared_Ptr {
     HANDLE m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
     LPVOID BaseAddress = nullptr;
@@ -75,11 +221,11 @@ class Shared_Ptr {
         refCount++;
     }
     INLINE UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) NOEXCEPT {//远程分配内存 remote allocate memory
-        auto allocatedMemory = VirtualAllocEx(m_hProcess, PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-        return reinterpret_cast<UDWORD>(allocatedMemory);
+        return (UDWORD)mallocex(m_hProcess,dwSize);
     }
     INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//远程释放内存 remote free memory
-        return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
+        freeex(m_hProcess,lpAddress);
+        return true;
     }
 public:
     INLINE Shared_Ptr(void* Addr, HANDLE hProc) : m_hProcess(hProc){
@@ -93,7 +239,7 @@ public:
     }
     INLINE Shared_Ptr(size_t nsize, HANDLE hProc) :m_hProcess(hProc){
         AddRef();
-        BaseAddress = (LPVOID)_AllocMemApi(nsize);//virtualallocex
+        BaseAddress = (LPVOID)_AllocMemApi(nsize);
     }
     INLINE Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount){
         AddRef();
@@ -120,7 +266,8 @@ public:
     INLINE void Release() NOEXCEPT {//release and refCount-- 引用计数减一
         refCount--;
         if (BaseAddress && refCount <= 0){
-            _FreeMemApi(BaseAddress);//当引用计数小于等于0时释放内存 free memory when refCount less than or equal to 0
+            if (_FreeMemApi(BaseAddress)) {//当引用计数小于等于0时释放内存 free memory when refCount less than or equal to 0
+            }
             BaseAddress = nullptr;
         }
     }
@@ -182,61 +329,7 @@ template<class Tx, class Ty> INLINE size_t _ucsicmp(const Tx * str1, const Ty * 
     return wstr1.compare(wstr2);
 }
 
-#define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&)=delete;TYPE(TYPE&&) = delete;void operator= (const TYPE&) = delete;void operator= (TYPE&&) = delete;
-template<typename T >
-class SingleTon {
-private:
-    DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
-    std::atomic_bool bflag=false;
-    GenericHandle<HANDLE, NormalHandle> hEvent;
-    static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT {return std::make_shared<T>();}//创建一个类的实例 create a instance of class
-    template <class... Args>
-    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT {return std::make_shared<T>(args...);}//用参数构造一个类的实例 create a instance of class by parameters
-    template <class... Args>
-    INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
-        static std::once_flag flag{};
-        static std::shared_ptr<T> instance = nullptr;
-        if (!instance){
-            std::call_once(flag, [&](){//call once
-                instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
-            });
-        }
-        if (instance->bflag){
-            throw std::exception("SingleTon has been created");
-        }else {
-            return *instance.get();
-        }
-    }
-    INLINE static T& GetInstanceImpl() NOEXCEPT {
-        static std::once_flag flag{};
-        static std::shared_ptr<T> instance = nullptr;
-        if (!instance){
-            std::call_once(flag, [&](){//call once
-                instance = CreateInstance();//element constructor through parameters    通过参数构造元素
-            });
-        }
-        if (instance->bflag){
-            throw std::exception("SingleTon has been created");
-        }else {
-            return *instance.get();
-        }
-    }
-public:
-    SingleTon(){
-        //按类名的typeid作为事件名 create event name by typeid
-        std::string eventname = typeid(T).name();
-        //创建互斥量 create event
-        hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
-        //检查互斥量是否已经被创建 check event is created
-        bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
-        if (!hEvent)throw std::exception("CreateEventA failed");
-    }
-    ~SingleTon(){ }
-    template <class... Args>
-    INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
-        return GetInstanceImpl(args...);
-    }   
-};
+
 enum EnumStatus {
     Continue,
     Break
@@ -998,7 +1091,11 @@ private:
 int main(){
     auto& Process = Process::GetInstance();//get instance   获取实例
     Process.Attach("notepad.exe");//attach process  附加进程
-    std::cout<<Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
+    while (true)
+    {
+        std::cout << Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
+    }
+    
     return 0;
 }
 
