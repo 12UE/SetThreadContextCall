@@ -183,7 +183,31 @@ public:
         return Get(size);  // 重新尝试获取内存 get memory again
     }
     void Free(void* ptr, size_t size) {
-        Add(ptr, size);
+        //size归还空间给剩余空间最大的给加上去 return size to the largest remaining space
+        FreeBlock** p = &m_head;
+        FreeBlock* Maxblock = nullptr;
+        while (*p) {
+            if ((*p)->ptr == ptr) {
+                (*p)->size += size;
+                if (Maxblock == nullptr)Maxblock = *p;
+            }
+            p = &(*p)->next;
+        }
+        //合并空间 merge space
+        if (Maxblock) {
+            p = &m_head;
+            while (*p) {
+                if ((*p)->ptr == (char*)Maxblock->ptr + Maxblock->size) {
+                    Maxblock->size += (*p)->size;
+                    FreeBlock* next = (*p)->next;
+                    delete *p;
+                    *p = next;
+                }
+                else {
+                    p = &(*p)->next;
+                }
+            }
+        }
     }
 private:
     FreeBlock* m_head;
