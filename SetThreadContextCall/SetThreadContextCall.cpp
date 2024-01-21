@@ -229,7 +229,7 @@ public:
         }
     }
     INLINE void* mallocex(size_t size) {
-        void* ptr =Get(size);
+        auto ptr =Get(size);
         g_allocMap[ptr] = size;
         return ptr;
     }
