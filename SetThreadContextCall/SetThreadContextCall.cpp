@@ -189,6 +189,7 @@ public:
         SIZE_T written = 0;
         //分配一个临时空间用于存0   allocate a temporary space to store 0
         std::unique_ptr<char[]> temp(new char[allocSize]());
+        memset(temp.get(), 0, allocSize);
         if (!WriteProcessMemory(m_hProcess,ptr, temp.get(), allocSize, &written)) {
             std::cerr << "WriteProcessMemory failed." << std::endl;
         }
