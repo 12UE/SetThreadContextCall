@@ -153,6 +153,7 @@ public:
             delete block;
             block = next;
         }
+        g_allocMap.clear();
     }
     INLINE void Add(void* ptr, size_t size) {
         auto block = new FreeBlock();
@@ -227,6 +228,17 @@ public:
                 }
             }
         }
+        //大于0x2000的空闲块释放
+        auto block = m_head;
+        while (block) {
+            auto next = block->next;
+            if (block->size > 0x2000) {
+                if (m_hProcess)VirtualFreeExApi(m_hProcess,block->ptr, block->size, MEM_RELEASE);
+                delete block;
+            }
+            block = next;
+        }
+
     }
     INLINE void* mallocex(size_t size) {
         auto ptr =Get(size);
@@ -244,6 +256,7 @@ public:
     }
 private:
     std::unordered_map<void*, size_t> g_allocMap;
+    std::unordered_map<void*,bool> g_allocMap2;//记录内存是不是整块分配的 record memory is not a whole block allocation
     FreeBlock* m_head;
     GenericHandle<HANDLE, NormalHandleView> m_hProcess;//view
 };
@@ -306,8 +319,7 @@ public:
     INLINE void Release() NOEXCEPT {//release and refCount-- 引用计数减一
         refCount--;
         if (BaseAddress && refCount <= 0){
-            if (_FreeMemApi(BaseAddress)) {//当引用计数小于等于0时释放内存 free memory when refCount less than or equal to 0
-            }
+            _FreeMemApi(BaseAddress);
             BaseAddress = nullptr;
         }
     }
