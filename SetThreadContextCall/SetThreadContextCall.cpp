@@ -159,6 +159,7 @@ public:
         m_head = block;
     }
     void* Get(size_t size) {
+        if (size <= 0) return nullptr;
         auto p = &m_head;
         while (*p) {
             if ((*p)->size >= size) {
