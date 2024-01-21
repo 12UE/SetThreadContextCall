@@ -72,7 +72,7 @@ template<typename T >
 class SingleTon {
 private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
-        std::atomic_bool bflag = false;
+    std::atomic_bool bflag = false;
     GenericHandle<HANDLE, NormalHandle> hEvent;
     static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT { return std::make_shared<T>(); }//创建一个类的实例 create a instance of class
     template <class... Args>
@@ -124,20 +124,17 @@ public:
         return GetInstanceImpl(args...);
     }
 };
-
 class FreeBlock {
 public:
     size_t size;
     void* ptr;
     FreeBlock* next;
 };
-
 class FreeBlockList:public SingleTon<FreeBlockList> {
 public:
     FreeBlockList(HANDLE hprocess=GetCurrentProcess()) : m_head(nullptr) {
         m_hProcess = hprocess;
     }
-
     ~FreeBlockList() {
         FreeBlock* block = m_head;
         while (block) {
@@ -147,7 +144,6 @@ public:
             block = next;
         }
     }
-
     void Add(void* ptr, size_t size) {
         FreeBlock* block = new FreeBlock();
         block->ptr = ptr;
@@ -155,14 +151,13 @@ public:
         block->next = m_head;
         m_head = block;
     }
-
     void* Get(size_t size) {
         FreeBlock** p = &m_head;
         while (*p) {
             if ((*p)->size >= size) {
                 FreeBlock* block = *p;
                 if (block->size > size) {
-                    // 如果块的大小大于请求的大小，那么我们需要分割这个块
+                    // 如果块的大小大于请求的大小，那么我们需要分割这个块 if block size is greater than requested size, we need to split this block
                     FreeBlock* newBlock = new FreeBlock();
                     newBlock->ptr = (char*)block->ptr + size;
                     newBlock->size = block->size - size;
@@ -170,15 +165,14 @@ public:
                     *p = newBlock;
                 }
                 else {
-                    // 否则，我们只需删除这个块
+                    // 否则，我们只需删除这个块 delete this block
                     *p = block->next;
                 }
                 return block->ptr;
             }
             p = &(*p)->next;
         }
-
-        // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存
+        // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存 get more memory from system if not found enough memory
         size_t allocSize = (size > 0x1000) ? size : 0x1000;
         void* ptr = VirtualAllocEx(m_hProcess,(LPVOID)nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         if (ptr == nullptr) {
@@ -186,13 +180,11 @@ public:
             return nullptr;
         }
         Add(ptr, allocSize);
-        return Get(size);  // 重新尝试获取内存
+        return Get(size);  // 重新尝试获取内存 get memory again
     }
-
     void Free(void* ptr, size_t size) {
         Add(ptr, size);
     }
-
 private:
     FreeBlock* m_head;
     HANDLE m_hProcess;//view
