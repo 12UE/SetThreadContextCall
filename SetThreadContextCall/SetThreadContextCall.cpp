@@ -181,7 +181,7 @@ public:
         }
         // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存 get more memory from system if not found enough memory
         auto allocSize = (size > 0x1000) ? size : 0x1000;
-        void* ptr = VirtualAllocExApi(m_hProcess,nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        auto ptr = VirtualAllocExApi(m_hProcess,nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         if (ptr == nullptr) {
             std::cerr << "VirtualAlloc failed." << std::endl;
             return nullptr;
@@ -212,7 +212,7 @@ public:
             while (*p) {
                 if ((*p)->ptr == (char*)Maxblock->ptr + Maxblock->size) {
                     Maxblock->size += (*p)->size;
-                    FreeBlock* next = (*p)->next;
+                    auto next = (*p)->next;
                     delete *p;
                     *p = next;
                 }
