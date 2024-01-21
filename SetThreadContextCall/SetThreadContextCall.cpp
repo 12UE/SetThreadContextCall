@@ -254,7 +254,7 @@ class Shared_Ptr {
     void AddRef() NOEXCEPT {
         refCount++;
     }
-    INLINE UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) NOEXCEPT {//远程分配内存 remote allocate memory
+    INLINE UDWORD _AllocMemApi(SIZE_T dwSize) NOEXCEPT {//远程分配内存 remote allocate memory
         return (UDWORD)mallocex(m_hProcess,dwSize);
     }
     INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//远程释放内存 remote free memory
