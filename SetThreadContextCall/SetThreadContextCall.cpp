@@ -81,6 +81,11 @@ private:
     static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT { return std::make_shared<T>(); }//创建一个类的实例 create a instance of class
     template <class... Args>
     static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT { return std::make_shared<T>(args...); }//用参数构造一个类的实例 create a instance of class by parameters
+    std::string GetCurrentProcessName() NOEXCEPT {//获取当前进程名 get current process name
+        char szProcessName[MAX_PATH] = { 0 };
+        GetModuleFileNameA(NULL, szProcessName, MAX_PATH);
+        return szProcessName;
+    }
     template <class... Args>
     INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
         static std::once_flag flag{};
@@ -115,7 +120,9 @@ private:
 public:
     SingleTon() {
         //按类名的typeid作为事件名 create event name by typeid
-        std::string eventname = typeid(T).name();
+        std::string eventname = typeid(T).name()+GetCurrentProcessName();
+        //将/替换为_ replace / with _
+        std::replace(eventname.begin(), eventname.end(), '\\', '_');
         //创建互斥量 create event
         hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
         //检查互斥量是否已经被创建 check event is created
@@ -380,8 +387,6 @@ template<class Tx, class Ty> INLINE size_t _ucsicmp(const Tx * str1, const Ty * 
     std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
     return wstr1.compare(wstr2);
 }
-
-
 enum EnumStatus {
     Continue,
     Break
