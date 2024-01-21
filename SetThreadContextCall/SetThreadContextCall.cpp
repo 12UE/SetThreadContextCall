@@ -28,6 +28,10 @@ public:
     INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }
     INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }
 };
+class NormalHandleView:public NormalHandle {
+public:
+    INLINE  static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭*/ }//多态具有自己的行为  polymorphism has its own behavior
+};
 template<class T, class Traits>
 class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
 private:
@@ -145,7 +149,7 @@ public:
         auto block = m_head;
         while (block) {
             auto next = block->next;
-            VirtualFreeExApi(m_hProcess,block->ptr, block->size, MEM_RELEASE);
+            if(m_hProcess)VirtualFreeExApi(m_hProcess,block->ptr, block->size, MEM_RELEASE);
             delete block;
             block = next;
         }
@@ -181,7 +185,8 @@ public:
         }
         // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存 get more memory from system if not found enough memory
         auto allocSize = (size > 0x1000) ? size : 0x1000;
-        auto ptr = VirtualAllocExApi(m_hProcess,nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        LPVOID ptr=NULL;
+        if (m_hProcess)ptr=VirtualAllocExApi(m_hProcess, nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         if (ptr == nullptr) {
             std::cerr << "VirtualAlloc failed." << std::endl;
             return nullptr;
@@ -240,7 +245,7 @@ public:
 private:
     std::unordered_map<void*, size_t> g_allocMap;
     FreeBlock* m_head;
-    HANDLE m_hProcess;//view
+    GenericHandle<HANDLE, NormalHandleView> m_hProcess;//view
 };
 INLINE void* mallocex(HANDLE hProcess,size_t size) {
     return FreeBlockList::GetInstance(hProcess).mallocex(size);
@@ -249,7 +254,7 @@ INLINE void freeex(HANDLE hProcess,void* ptr) {
     return FreeBlockList::GetInstance(hProcess).freeex(ptr);   
 }
 class Shared_Ptr {
-    HANDLE m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
+    GenericHandle<HANDLE,NormalHandleView> m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
     LPVOID BaseAddress = nullptr;
     int refCount = 0;
     void AddRef() NOEXCEPT {
@@ -1130,7 +1135,6 @@ int main(){
     {
         std::cout << Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
     }
-    
     return 0;
 }
 
