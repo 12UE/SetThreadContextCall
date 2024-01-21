@@ -130,6 +130,13 @@ public:
     void* ptr;
     FreeBlock* next;
 };
+BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {
+    return VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);
+}
+LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {
+    return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);
+}
+
 class FreeBlockList:public SingleTon<FreeBlockList> {
 public:
     FreeBlockList(HANDLE hprocess=GetCurrentProcess()) : m_head(nullptr) {
@@ -139,7 +146,7 @@ public:
         FreeBlock* block = m_head;
         while (block) {
             FreeBlock* next = block->next;
-            VirtualFreeEx(m_hProcess,block->ptr, 0, MEM_RELEASE);
+            VirtualFreeExApi(m_hProcess,block->ptr, block->size, MEM_RELEASE);
             delete block;
             block = next;
         }
@@ -174,10 +181,16 @@ public:
         }
         // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存 get more memory from system if not found enough memory
         size_t allocSize = (size > 0x1000) ? size : 0x1000;
-        void* ptr = VirtualAllocEx(m_hProcess,(LPVOID)nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        void* ptr = VirtualAllocExApi(m_hProcess,nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         if (ptr == nullptr) {
             std::cerr << "VirtualAlloc failed." << std::endl;
             return nullptr;
+        }
+        SIZE_T written = 0;
+        //分配一个临时空间用于存0   allocate a temporary space to store 0
+        std::unique_ptr<char[]> temp(new char[allocSize]());
+        if (!WriteProcessMemory(m_hProcess,ptr, temp.get(), allocSize, &written)) {
+            std::cerr << "WriteProcessMemory failed." << std::endl;
         }
         Add(ptr, allocSize);
         return Get(size);  // 重新尝试获取内存 get memory again
