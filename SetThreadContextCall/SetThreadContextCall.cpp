@@ -136,7 +136,6 @@ BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dw
 LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {
     return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);
 }
-
 class FreeBlockList:public SingleTon<FreeBlockList> {
 public:
     FreeBlockList(HANDLE hprocess=GetCurrentProcess()) : m_head(nullptr) {
@@ -151,7 +150,7 @@ public:
             block = next;
         }
     }
-    void Add(void* ptr, size_t size) {
+    INLINE void Add(void* ptr, size_t size) {
         auto block = new FreeBlock();
         block->ptr = ptr;
         block->size = size;
@@ -196,7 +195,7 @@ public:
         Add(ptr, allocSize);
         return Get(size);  // 重新尝试获取内存 get memory again
     }
-    void Free(void* ptr, size_t size) {
+    INLINE void Free(void* ptr, size_t size) {
         //size归还空间给剩余空间最大的给加上去 return size to the largest remaining space
         auto p = &m_head;
         auto Maxblock = (FreeBlock*)nullptr;
@@ -223,25 +222,30 @@ public:
             }
         }
     }
+    INLINE void* mallocex(size_t size) {
+        void* ptr =Get(size);
+        g_allocMap[ptr] = size;
+        return ptr;
+    }
+    INLINE void freeex(void* ptr) {
+        auto it = g_allocMap.find(ptr);
+        if (it == g_allocMap.end()) {
+            std::cerr << "freeex: invalid pointer." << std::endl;
+            return;
+        }
+        Free(ptr, it->second);
+        g_allocMap.erase(it);
+    }
 private:
+    std::unordered_map<void*, size_t> g_allocMap;
     FreeBlock* m_head;
     HANDLE m_hProcess;//view
 };
-std::unordered_map<void*, size_t> g_allocMap;
-void* mallocex(HANDLE hProcess,size_t size) {
-    void* ptr = FreeBlockList::GetInstance(hProcess).Get(size);
-    g_allocMap[ptr] = size;
-    return ptr;
+INLINE void* mallocex(HANDLE hProcess,size_t size) {
+    return FreeBlockList::GetInstance(hProcess).mallocex(size);
 }
-void freeex(HANDLE hProcess,void* ptr) {
-    auto it = g_allocMap.find(ptr);
-    if (it == g_allocMap.end()) {
-        std::cerr << "freeex: invalid pointer." << std::endl;
-        return;
-    }
-    FreeBlockList::GetInstance(hProcess).Free(ptr, it->second);
-    g_allocMap.erase(it);
-    
+INLINE void freeex(HANDLE hProcess,void* ptr) {
+    return FreeBlockList::GetInstance(hProcess).freeex(ptr);   
 }
 class Shared_Ptr {
     HANDLE m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
