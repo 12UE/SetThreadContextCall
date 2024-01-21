@@ -121,7 +121,7 @@ public:
     ~SingleTon() { }
     template <class... Args>
     INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
-        return GetInstanceImpl(args...);
+        return GetInstanceImpl(std::forward<Args>(args)...);
     }
 };
 class FreeBlock {
