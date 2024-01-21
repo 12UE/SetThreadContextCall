@@ -143,29 +143,29 @@ public:
         m_hProcess = hprocess;
     }
     ~FreeBlockList() {
-        FreeBlock* block = m_head;
+        auto block = m_head;
         while (block) {
-            FreeBlock* next = block->next;
+            auto next = block->next;
             VirtualFreeExApi(m_hProcess,block->ptr, block->size, MEM_RELEASE);
             delete block;
             block = next;
         }
     }
     void Add(void* ptr, size_t size) {
-        FreeBlock* block = new FreeBlock();
+        auto block = new FreeBlock();
         block->ptr = ptr;
         block->size = size;
         block->next = m_head;
         m_head = block;
     }
     void* Get(size_t size) {
-        FreeBlock** p = &m_head;
+        auto p = &m_head;
         while (*p) {
             if ((*p)->size >= size) {
-                FreeBlock* block = *p;
+                auto block = *p;
                 if (block->size > size) {
                     // 如果块的大小大于请求的大小，那么我们需要分割这个块 if block size is greater than requested size, we need to split this block
-                    FreeBlock* newBlock = new FreeBlock();
+                    auto newBlock = new FreeBlock();
                     newBlock->ptr = (char*)block->ptr + size;
                     newBlock->size = block->size - size;
                     newBlock->next = block->next;
@@ -180,7 +180,7 @@ public:
             p = &(*p)->next;
         }
         // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存 get more memory from system if not found enough memory
-        size_t allocSize = (size > 0x1000) ? size : 0x1000;
+        auto allocSize = (size > 0x1000) ? size : 0x1000;
         void* ptr = VirtualAllocExApi(m_hProcess,nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         if (ptr == nullptr) {
             std::cerr << "VirtualAlloc failed." << std::endl;
@@ -197,8 +197,8 @@ public:
     }
     void Free(void* ptr, size_t size) {
         //size归还空间给剩余空间最大的给加上去 return size to the largest remaining space
-        FreeBlock** p = &m_head;
-        FreeBlock* Maxblock = nullptr;
+        auto p = &m_head;
+        auto Maxblock = (FreeBlock*)nullptr;
         while (*p) {
             if ((*p)->ptr == ptr) {
                 (*p)->size += size;
