@@ -30,7 +30,7 @@ public:
 };
 class NormalHandleView:public NormalHandle {
 public:
-    INLINE  static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭*/ }//多态具有自己的行为  polymorphism has its own behavior
+    INLINE  static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a view  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
 };
 template<class T, class Traits>
 class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
