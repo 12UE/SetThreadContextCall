@@ -22,7 +22,7 @@ using UDWORD = DWORD64;
 using UDWORD = DWORD32;
 #define XIP Eip//instruction pointer
 #endif
-class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值 clarify the handle close method and the invalid value of the handle
+class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值 clarify the handle close method and the invalid value of the handle 智能句柄的Traits
 public:
     INLINE static void Close(HANDLE handle)NOEXCEPT { CloseHandle(handle); }
     INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }
