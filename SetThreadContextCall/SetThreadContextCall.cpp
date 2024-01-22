@@ -28,7 +28,7 @@ public:
     INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }
     INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }
 };
-class NormalHandleView:public NormalHandle {
+class NormalHandleView:public NormalHandle {//采用继承的方式,重写Close函数,实现句柄的视图 use inheritance to rewrite Close function, realize handle view
 public:
     INLINE  static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a view  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
 };
@@ -91,14 +91,14 @@ private:
         TCHAR szModName[MAX_PATH];
         std::string result;
 
-        // 获取当前函数的地址，以定位当前模块
+        // 获取当前函数的地址，以定位当前模块 get the address of current function to locate current module
         if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
             (LPCTSTR)&GetModuleName,
             &hMod)) {
-            // 获取模块的文件路径
+            // 获取模块的文件路径 get module file path
             if (GetModuleFileName(hMod, szModName, MAX_PATH)) {
-                // 将TCHAR转换为std::string
+                // 将TCHAR转换为std::string convert TCHAR to std::string
 #ifdef UNICODE
                 std::wstring ws(szModName);
                 result.assign(ws.begin(), ws.end());
@@ -121,7 +121,7 @@ private:
         static std::once_flag flag{};
         static std::shared_ptr<T> instance = nullptr;
         if (!instance) {
-            std::call_once(flag, [&]() {//call once
+            std::call_once(flag, [&]() {//call once   只调用一次
                 instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
                 });
         }
@@ -136,7 +136,7 @@ private:
         static std::once_flag flag{};
         static std::shared_ptr<T> instance = nullptr;
         if (!instance) {
-            std::call_once(flag, [&]() {//call once
+            std::call_once(flag, [&]() {//call once  只调用一次
                 instance = CreateInstance();//element constructor through parameters    通过参数构造元素
                 });
         }
@@ -172,12 +172,12 @@ public:
     FreeBlock* next;
 };
 BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {//远程释放内存 remote free memory
-    return VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);
+    return VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);//系统的 VirtualFreeEx  system VirtualFreeEx
 }
 LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
-    return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);
+    return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);// 系统的 VirtualAllocEx  system VirtualAllocEx
 }
-class FreeBlockList:public SingleTon<FreeBlockList> {
+class FreeBlockList:public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
 public:
     FreeBlockList(HANDLE hprocess=GetCurrentProcess()) : m_head(nullptr) {
         m_hProcess = hprocess;
@@ -265,7 +265,7 @@ public:
                 }
             }
         }
-        //大于0x2000的空闲块释放
+        //大于0x2000的空闲块释放    free free block greater than 0x2000
         auto block = m_head;
         while (block) {
             auto next = block->next;
@@ -334,7 +334,7 @@ public:
     INLINE Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount){
         AddRef();
     }
-    INLINE Shared_Ptr& operator=(const Shared_Ptr& other) NOEXCEPT {//copy assignment
+    INLINE Shared_Ptr& operator=(const Shared_Ptr& other) NOEXCEPT {//copy assignment   拷贝赋值
         if (this != &other){
             Release();
             BaseAddress = other.BaseAddress;
@@ -869,26 +869,13 @@ public:
         }
         return 0;
     }
-    //writeapi
+    //writeapi  
     INLINE ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
         if (m_bAttached){
             SIZE_T bytesWritten = 0;
             WriteProcessMemory(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
             return bytesWritten;
         }
-        return 0;
-    }
-    //allocmemapi
-    INLINE UDWORD _AllocMemApi(SIZE_T dwSize, LPVOID PageBase = NULL) NOEXCEPT {//return allocated memory address
-        if (m_bAttached){
-            auto allocatedMemory = VirtualAllocEx(m_hProcess, PageBase, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            return reinterpret_cast<UDWORD>(allocatedMemory);
-        }
-        return 0;
-    }
-    //freememapi
-    INLINE int _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//free memory
-        if (m_bAttached)return VirtualFreeEx(m_hProcess, lpAddress, 0, MEM_RELEASE);
         return 0;
     }
     template<class PRE>
