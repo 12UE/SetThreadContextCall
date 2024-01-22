@@ -620,7 +620,7 @@ public:
         return false;
     }
     bool IsBlock() {
-        //等待
+        //等待 wait 如果线程处于死锁状态，那么WaitForSingleObject会返回WAIT_TIMEOUT  if thread is in deadlock state,WaitForSingleObject will return WAIT_TIMEOUT
         DWORD dwRet = WaitForSingleObject(GetHandle(), 0);
         if (dwRet == WAIT_TIMEOUT) {
             return false;
@@ -629,26 +629,26 @@ public:
         }
         return false;
     }
-    //获取上下文    get context
+    //获取线程上下文  get thread context
     CONTEXT GetContext() NOEXCEPT {
         CONTEXT context = { 0 };
         context.ContextFlags = CONTEXT_FULL;
         GetThreadContext(GetHandle(), &context);
         return context;
     }
-    //设置上下文    set context
+    //设置线程的上下文  set thread context
     void SetContext(CONTEXT& context) NOEXCEPT {
         SetThreadContext(GetHandle(), &context);
     }
-    //暂停  suspend
+    //暂停线程执行  suspend thread execution
     void Suspend() NOEXCEPT {
         SuspendThread(GetHandle());
     }
-    //恢复  resume
+    //恢复线程执行  resume thread execution
     void Resume() NOEXCEPT {
         ResumeThread(GetHandle());
     }
-    //PostThreadMessage 
+    //PostThreadMessage  向线程发送消息  send message to thread
     BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) NOEXCEPT {//向线程发送消息  send message to thread
         return ::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
     }
