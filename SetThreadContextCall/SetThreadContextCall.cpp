@@ -80,16 +80,16 @@ public:
 };
 #define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&)=delete;TYPE(TYPE&&) = delete;void operator= (const TYPE&) = delete;void operator= (TYPE&&) = delete;
 template<typename T >
-class SingleTon {
+class SingleTon {//这种单例是线程安全的,同一个进程内只会创建一个实例 This singleton is thread safe, only one instance will be created in the same process
 private:
-    DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)
-    std::atomic_bool bflag = false;
-    GenericHandle<HANDLE, NormalHandle> hEvent;
+    DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)//删除拷贝构造函数和拷贝赋值函数 delete copy constructor and copy assignment
+    std::atomic_bool bflag = false;//标记是否已经创建了实例 mark whether the instance has been created
+    GenericHandle<HANDLE, NormalHandle> hEvent;//智能句柄 smart handle
     static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT { return std::make_shared<T>(); }//创建一个类的实例 create a instance of class
     template <class... Args>
-    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT { return std::make_shared<T>(args...); }//用参数构造一个类的实例 create a instance of class by parameters
+    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT { return std::make_shared<T>(args...); }//用参数构造一个类的实例 create a instance of class by parameters 两个CreateInstance函数是为了支持参数构造两个CreateInstance函数是为了支持参数构造
     std::string GetCurrentProcessName() NOEXCEPT {//获取当前进程名 get current process name
-        char szProcessName[MAX_PATH] = { 0 };
+        char szProcessName[MAX_PATH] = { 0 };//预留空间 reserve space
         GetModuleFileNameA(NULL, szProcessName, MAX_PATH);
         return szProcessName;
     }
@@ -131,7 +131,7 @@ public:
         //将/替换为_ replace / with _
         std::replace(eventname.begin(), eventname.end(), '\\', '_');//\\符号不能创建事件 属于特殊符号 \\ symbol can't create event is special symbol
         //创建互斥量 create event
-        hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());
+        hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());//利用同名事件来检查是否已经创建了实例 use same name event to check whether the instance has been created
         //检查互斥量是否已经被创建 check event is created
         bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
         if (!hEvent)throw std::exception("CreateEventA failed");
@@ -142,11 +142,11 @@ public:
         return GetInstanceImpl(std::forward<Args>(args)...);
     }
 };
-class FreeBlock {
+class FreeBlock {//空闲块 free block
 public:
-    size_t size;
-    void* ptr;
-    FreeBlock* next;
+    size_t size;//大小 size
+    void* ptr;  //指针 pointer
+    FreeBlock* next;//下一个块 next block 其实就是一个链表 actually is a linked list
 };
 BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {//远程释放内存 remote free memory
     return VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);//系统的 VirtualFreeEx  system VirtualFreeEx
@@ -154,12 +154,13 @@ BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dw
 LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
     return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);// 系统的 VirtualAllocEx  system VirtualAllocEx
 }
+//空闲块链表 free block list
 class FreeBlockList:public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
 public:
     FreeBlockList(HANDLE hprocess=GetCurrentProcess()) : m_head(nullptr) {
         m_hProcess = hprocess;
     }
-    ~FreeBlockList() {
+    ~FreeBlockList() {//当析构时释放所有空闲块 free all free block when destruct
         auto block = m_head;
         while (block) {
             auto next = block->next;
@@ -169,14 +170,14 @@ public:
         }
         g_allocMap.clear();
     }
-    INLINE void Add(void* ptr, size_t size) NOEXCEPT {
+    INLINE void Add(void* ptr, size_t size) NOEXCEPT {//加入一个空闲块 add a free block
         auto block = new FreeBlock();
         block->ptr = ptr;
         block->size = size;
         block->next = m_head;
         m_head = block;
     }
-    INLINE void* Get(size_t size)NOEXCEPT {
+    INLINE void* Get(size_t size)NOEXCEPT {//获得一个空闲块 get a free block
         if (size <= 0) return nullptr;
         auto p = &m_head;
         while (*p) {
@@ -201,7 +202,7 @@ public:
         // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存 get more memory from system if not found enough memory
         auto allocSize = (size > 0x1000) ? size : 0x1000;
         LPVOID ptr=NULL;
-        if (m_hProcess)ptr=VirtualAllocExApi(m_hProcess, nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        if (m_hProcess)ptr=VirtualAllocExApi(m_hProcess, nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);//调用系统的api分配内存 call system api to allocate memory
         if (ptr == nullptr) {
             std::cerr << "VirtualAlloc failed." << std::endl;
             return nullptr;
@@ -210,10 +211,10 @@ public:
         //分配一个临时空间用于存0   allocate a temporary space to store 0
         std::unique_ptr<char[]> temp(new char[allocSize]());
         memset(temp.get(), 0, allocSize);
-        if (!WriteProcessMemory(m_hProcess,ptr, temp.get(), allocSize, &written)) {
+        if (!WriteProcessMemory(m_hProcess,ptr, temp.get(), allocSize, &written)) {//将0写入到分配的内存 write 0 to allocated memory
             std::cerr << "WriteProcessMemory failed." << std::endl;
         }
-        Add(ptr, allocSize);
+        Add(ptr, allocSize);//加入到空闲块链表 add to free block list
         return Get(size);  // 重新尝试获取内存 get memory again
     }
     INLINE void Free(void* ptr, size_t size)NOEXCEPT {
@@ -222,7 +223,7 @@ public:
         auto Maxblock = (FreeBlock*)nullptr;
         while (*p) {
             if ((*p)->ptr == ptr) {
-                (*p)->size += size;
+                (*p)->size += size;//归还空间 return space
                 if (Maxblock == nullptr)Maxblock = *p;
             }
             p = &(*p)->next;
@@ -232,9 +233,9 @@ public:
             p = &m_head;
             while (*p) {
                 if ((*p)->ptr == (char*)Maxblock->ptr + Maxblock->size) {
-                    Maxblock->size += (*p)->size;
+                    Maxblock->size += (*p)->size;//合并空间 merge space
                     auto next = (*p)->next;
-                    delete *p;
+                    delete *p;//删除空闲块 delete free block
                     *p = next;
                 }
                 else {
@@ -269,16 +270,16 @@ public:
         g_allocMap.erase(it);
     }
 private:
-    std::unordered_map<void*, size_t> g_allocMap;
+    std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
     std::unordered_map<void*,bool> g_allocMap2;//记录内存是不是整块分配的 record memory is not a whole block allocation
     FreeBlock* m_head;
     GenericHandle<HANDLE, NormalHandleView> m_hProcess;//view
 };
 INLINE void* mallocex(HANDLE hProcess,size_t size) {
-    return FreeBlockList::GetInstance(hProcess).mallocex(size);
+    return FreeBlockList::GetInstance(hProcess).mallocex(size);//调用单例模式的函数 call singleton function
 }
 INLINE void freeex(HANDLE hProcess,void* ptr) {
-    return FreeBlockList::GetInstance(hProcess).freeex(ptr);   
+    return FreeBlockList::GetInstance(hProcess).freeex(ptr);   //调用单例模式的函数 call singleton function
 }
 class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
     GenericHandle<HANDLE,NormalHandleView> m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
@@ -301,22 +302,22 @@ public:
     }
     template<class T>
     INLINE Shared_Ptr() NOEXCEPT {
-        AddRef();
+        AddRef();//新建一个指针引用计数加一 reference count plus one means a new pointer points to this memory
         BaseAddress = (LPVOID)_AllocMemApi(sizeof(T));
     }
     INLINE Shared_Ptr(size_t nsize, HANDLE hProc) :m_hProcess(hProc){
-        AddRef();
+        AddRef();//引用计数加一说明有一个新的指针指向了这块内存 reference count plus one means a new pointer points to this memory
         BaseAddress = (LPVOID)_AllocMemApi(nsize);
     }
     INLINE Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount){
-        AddRef();
+        AddRef();//引用计数加一说明有一个新的指针指向了这块内存 reference count plus one means a new pointer points to this memory
     }
     INLINE Shared_Ptr& operator=(const Shared_Ptr& other) NOEXCEPT {//copy assignment   拷贝赋值
         if (this != &other){
             Release();
             BaseAddress = other.BaseAddress;
             refCount = other.refCount;
-            AddRef();
+            AddRef();//引用计数加一说明有一个新的指针指向了这块内存 reference count plus one means a new pointer points to this memory
         }
         return *this;
     }
@@ -333,7 +334,7 @@ public:
     INLINE void Release() NOEXCEPT {//release and refCount-- 引用计数减一
         refCount--;
         if (BaseAddress && refCount <= 0){
-            _FreeMemApi(BaseAddress);
+            _FreeMemApi(BaseAddress);//释放内存 free memory 只是归还空间到空闲块链表 return space to free block list
             BaseAddress = nullptr;
         }
     }
@@ -1118,13 +1119,13 @@ public:
         maptoorigin.clear();//clear map
     }
     INLINE decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) NOEXCEPT {
-        static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");
-        auto retdata = SetContextCallImpl(_Fx, args...);
+        static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
+        auto retdata = SetContextCallImpl(_Fx, args...);//返回值保存到retdata return value save to retdata
         using RetType = decltype(retdata);
-        std::promise<RetType> promise{};
+        std::promise<RetType> promise{};//承诺对象
         std::future<RetType> fut = promise.get_future();
-        promise.set_value(retdata);
-        ClearMemory();
+        promise.set_value(retdata);//设置承诺值 set promise value
+        ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
         return fut;
     }
     template<class T>
