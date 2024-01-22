@@ -280,7 +280,7 @@ INLINE void* mallocex(HANDLE hProcess,size_t size) {
 INLINE void freeex(HANDLE hProcess,void* ptr) {
     return FreeBlockList::GetInstance(hProcess).freeex(ptr);   
 }
-class Shared_Ptr {
+class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
     GenericHandle<HANDLE,NormalHandleView> m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
     LPVOID BaseAddress = nullptr;
     int refCount = 0;
@@ -320,11 +320,11 @@ public:
         }
         return *this;
     }
-    INLINE LPVOID get() NOEXCEPT {
+    INLINE LPVOID get() NOEXCEPT {//获得指针但是增加引用计数 get pointer but increase reference count
         AddRef();
         return BaseAddress;
     }
-    INLINE LPVOID raw() const NOEXCEPT {return BaseAddress;}
+    INLINE LPVOID raw() const NOEXCEPT {return BaseAddress;}//不增加引用计数的获取raw指针 get raw pointer without increasing reference count
     INLINE UDWORD getUDWORD() NOEXCEPT {//返回远程地址的UDWORD值 return UDWORD value of remote address
         AddRef();
         return (UDWORD)BaseAddress;
