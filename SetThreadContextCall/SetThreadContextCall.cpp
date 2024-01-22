@@ -86,6 +86,36 @@ private:
         GetModuleFileNameA(NULL, szProcessName, MAX_PATH);
         return szProcessName;
     }
+    static std::string GetModuleName() {
+        HMODULE hMod = NULL;
+        TCHAR szModName[MAX_PATH];
+        std::string result;
+
+        // 获取当前函数的地址，以定位当前模块
+        if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCTSTR)&GetModuleName,
+            &hMod)) {
+            // 获取模块的文件路径
+            if (GetModuleFileName(hMod, szModName, MAX_PATH)) {
+                // 将TCHAR转换为std::string
+#ifdef UNICODE
+                std::wstring ws(szModName);
+                result.assign(ws.begin(), ws.end());
+#else
+                result = szModName;
+#endif
+            }
+            else {
+                std::cerr << "Failed to get module file name." << std::endl;
+            }
+        }
+        else {
+            std::cerr << "GetModuleHandleEx failed." << std::endl;
+        }
+
+        return result;
+    }
     template <class... Args>
     INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
         static std::once_flag flag{};
@@ -120,7 +150,7 @@ private:
 public:
     SingleTon() {
         //按类名的typeid作为事件名 create event name by typeid
-        std::string eventname = typeid(T).name()+GetCurrentProcessName();
+        std::string eventname = typeid(T).name()+GetCurrentProcessName()+ GetModuleName();
         //将/替换为_ replace / with _
         std::replace(eventname.begin(), eventname.end(), '\\', '_');
         //创建互斥量 create event
