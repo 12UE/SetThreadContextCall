@@ -31,7 +31,7 @@ public:
 template<class Ty>
 class View:public Ty{//采用基础句柄的视图,不负责关闭句柄 use basic handle view,not responsible for closing handle
 public:
-    INLINE  static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a view  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
+    INLINE static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a view  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
 };
 using NormalHandleView = View<NormalHandle>;
 template<class T, class Traits>
