@@ -24,7 +24,7 @@ using UDWORD = DWORD32;
 #endif
 class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值 clarify the handle close method and the invalid value of the handle
 public:
-    INLINE  static void Close(HANDLE handle)NOEXCEPT { CloseHandle(handle); }
+    INLINE static void Close(HANDLE handle)NOEXCEPT { CloseHandle(handle); }
     INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }
     INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }
 };
