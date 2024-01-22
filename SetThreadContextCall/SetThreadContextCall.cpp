@@ -28,10 +28,12 @@ public:
     INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }
     INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }
 };
-class NormalHandleView:public NormalHandle {//采用继承的方式,重写Close函数,实现句柄的视图 use inheritance to rewrite Close function, realize handle view
+template<class Ty>
+class View:public Ty{
 public:
     INLINE  static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a view  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
 };
+using NormalHandleView = View<NormalHandle>;
 template<class T, class Traits>
 class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
 private:
