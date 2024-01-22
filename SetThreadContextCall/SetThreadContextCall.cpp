@@ -619,6 +619,16 @@ public:
         }
         return false;
     }
+    bool IsBlock() {
+        //等待
+        DWORD dwRet = WaitForSingleObject(GetHandle(), 0);
+        if (dwRet == WAIT_TIMEOUT) {
+            return false;
+        }else if (dwRet == WAIT_OBJECT_0) {
+            return true;
+        }
+        return false;
+    }
     //获取上下文    get context
     CONTEXT GetContext() NOEXCEPT {
         CONTEXT context = { 0 };
@@ -887,7 +897,7 @@ public:
                 for (auto bRet = Thread32First(hSnapshot, &threadEntry); bRet; bRet = Thread32Next(hSnapshot, &threadEntry)) {
                     if (threadEntry.th32OwnerProcessID == m_pid) {
                         Thread thread(threadEntry);
-                        if (thread.IsRunning())if (pre(threadEntry) == Break)break;
+                        if (!thread.IsBlock()&&thread.IsRunning())if (pre(threadEntry) == Break)break;
                     }
                 }
             }
