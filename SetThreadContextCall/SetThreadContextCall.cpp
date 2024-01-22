@@ -150,7 +150,7 @@ private:
 public:
     SingleTon() {
         //按类名的typeid作为事件名 create event name by typeid
-        std::string eventname = typeid(T).name()+GetCurrentProcessName()+ GetModuleName();
+        std::string eventname = typeid(T).name()+GetCurrentProcessName()+ GetModuleName();//可选择性的加上dll的名字 optionally add dll name
         //将/替换为_ replace / with _
         std::replace(eventname.begin(), eventname.end(), '\\', '_');
         //创建互斥量 create event
