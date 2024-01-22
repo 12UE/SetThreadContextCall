@@ -34,7 +34,6 @@ class View:public Ty{//采用基础句柄的视图,不负责关闭句柄 use basic handle view,n
 public:
     INLINE static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a view  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
 };
-using NormalHandleView = View<NormalHandle>;
 template<class T, class Traits>
 class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
 private:
@@ -70,6 +69,10 @@ public:
     //等待句柄 wait handle 单位:毫秒 unit:ms
     INLINE DWORD Wait(DWORD time)NOEXCEPT {
         return Traits::Wait(m_handle, time);
+    }
+    //判断和T类型是否相同 judge whether is same type with T
+    inline bool operator==(const T& handle)NOEXCEPT {//重载== overload ==
+        return m_handle == handle;
     }
     INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
         return m_handle;
@@ -273,7 +276,7 @@ private:
     std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
     std::unordered_map<void*,bool> g_allocMap2;//记录内存是不是整块分配的 record memory is not a whole block allocation
     FreeBlock* m_head;
-    GenericHandle<HANDLE, NormalHandleView> m_hProcess;//view
+    GenericHandle<HANDLE, View<NormalHandle>> m_hProcess;//view
 };
 INLINE void* mallocex(HANDLE hProcess,size_t size) {
     return FreeBlockList::GetInstance(hProcess).mallocex(size);//调用单例模式的函数 call singleton function
@@ -282,7 +285,7 @@ INLINE void freeex(HANDLE hProcess,void* ptr) {
     return FreeBlockList::GetInstance(hProcess).freeex(ptr);   //调用单例模式的函数 call singleton function
 }
 class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
-    GenericHandle<HANDLE,NormalHandleView> m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
+    GenericHandle<HANDLE, View<NormalHandle>> m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
     LPVOID BaseAddress = nullptr;
     int refCount = 0;
     void AddRef() NOEXCEPT {
