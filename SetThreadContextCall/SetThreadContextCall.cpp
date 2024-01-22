@@ -937,8 +937,7 @@ public:
             _thread = std::move(thread);//move thread   移动线程
             return Break;
             });
-        WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
-
+        hEvent.Wait(INFINITE);//wait event
         if(maptoorigin.size()>0)postprocess(args...);//post process parameter   后处理参数
         maptoorigin.clear();//clear map  清除map
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
@@ -995,7 +994,7 @@ public:
             _thread = std::move(thread);//store thread  存储线程
             return Break;
         });
-        WaitForSingleObject(hEvent, INFINITE);//wait event  等待事件
+        hEvent.Wait(INFINITE);//wait event
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value 读取参数以返回值
         return threadData.retdata;//return value    返回值
     }
@@ -1057,7 +1056,7 @@ public:
             _thread = std::move(thread);//store thread
             return Break;
             });
-        WaitForSingleObject(hEvent, INFINITE);//wait event
+        hEvent.Wait(INFINITE);//wait event
     }
     template<class _Fn, class ...Arg>
     INLINE void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
@@ -1112,7 +1111,7 @@ public:
             _thread = std::move(thread);//move thread
             return Break;
         });
-        WaitForSingleObject(hEvent, INFINITE);//wait event
+        hEvent.Wait(INFINITE);//wait event
         if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
         maptoorigin.clear();//clear map
     }
