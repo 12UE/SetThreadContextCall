@@ -86,7 +86,7 @@ private:
         GetModuleFileNameA(NULL, szProcessName, MAX_PATH);
         return szProcessName;
     }
-    static std::string GetModuleName() {
+    static std::string GetModuleName() NOEXCEPT {
         HMODULE hMod = NULL;
         TCHAR szModName[MAX_PATH];
         std::string result;
@@ -192,14 +192,14 @@ public:
         }
         g_allocMap.clear();
     }
-    INLINE void Add(void* ptr, size_t size) {
+    INLINE void Add(void* ptr, size_t size) NOEXCEPT {
         auto block = new FreeBlock();
         block->ptr = ptr;
         block->size = size;
         block->next = m_head;
         m_head = block;
     }
-    void* Get(size_t size) {
+    INLINE void* Get(size_t size)NOEXCEPT {
         if (size <= 0) return nullptr;
         auto p = &m_head;
         while (*p) {
@@ -239,7 +239,7 @@ public:
         Add(ptr, allocSize);
         return Get(size);  // 重新尝试获取内存 get memory again
     }
-    INLINE void Free(void* ptr, size_t size) {
+    INLINE void Free(void* ptr, size_t size)NOEXCEPT {
         //size归还空间给剩余空间最大的给加上去 return size to the largest remaining space
         auto p = &m_head;
         auto Maxblock = (FreeBlock*)nullptr;
@@ -277,12 +277,12 @@ public:
         }
 
     }
-    INLINE void* mallocex(size_t size) {
+    INLINE void* mallocex(size_t size)NOEXCEPT {
         auto ptr =Get(size);
         g_allocMap[ptr] = size;
         return ptr;
     }
-    INLINE void freeex(void* ptr) {
+    INLINE void freeex(void* ptr)NOEXCEPT {
         auto it = g_allocMap.find(ptr);
         if (it == g_allocMap.end()) {
             std::cerr << "freeex: invalid pointer." << std::endl;
