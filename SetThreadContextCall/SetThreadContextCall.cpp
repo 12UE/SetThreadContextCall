@@ -415,15 +415,16 @@ public:
     T retdata;//return data 返回值
 };
 template <class Fn>
-class ThreadData<Fn, void>:public ThreadDataBase<Fn, void> {
+class ThreadData<Fn, void>:public ThreadDataBase<Fn, void> {//特化当返回值为void的情况 specialize when return value is void
 public:
 };
 template <class Fn, class T, class ...Args>
 class ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from ThreadData   线程数据结构继承自ThreadData
-public:
-    std::tuple<Args...> params;//parameters   参数
+public://这里的T会因为是void而选用ThreadData<Fn, void> T here will use ThreadData<Fn, void> because it is void
+    std::tuple<Args...> params;//parameters   参数 多个参数用tuple存储 multiple parameters use tuple to store
 };
 #pragma pack(pop)//恢复原始pack restore original pack   
+//定义函数指针 define function pointer
 typedef HMODULE(WINAPI* PLOADLIBRARYA)(
     LPCSTR lpLibFileName
     );
@@ -449,6 +450,7 @@ T ThreadFunction(void* param) noexcept {
     auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
     auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
     auto ntdll = pLoadLibrary(threadData->funcname[0]);
+    //通过名字打开对应的事件 open event by name 名字已经事先定义好 name is defined in advance
     auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);//加载OpenEventA    load OpenEventA
     auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname); //打开事件  open event
     auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);//设置事件  set event
@@ -505,7 +507,7 @@ void ThreadFunction2NoReturn(void* param) noexcept {
         auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
         pCloseHandle(hEventHandle);
 }
-//代码来自于<加密与解密>有关劫持线程注入的代码 code from <加密与解密> about thread hijacking injection
+//代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
 typedef class DATA_CONTEXT {
 public:
     BYTE ShellCode[0x30];				//x64:0X00   |->x86:0x00
@@ -514,7 +516,7 @@ public:
     LPVOID OriginalEip;					//x64:0X40	 |->x86:0x38
 }*PINJECT_DATA_CONTEXT;
 #if defined _WIN64
-INLINE BYTE ContextInjectShell[] = {			//x64.asm
+INLINE BYTE ContextInjectShell[] = {			//x64.asm 书中并没有给出x64的代码,这里是我自己写的  the book does not give the code of x64,here is my own code
     0x50,								//push	rax
     0x53,								//push	rbx
     0x9c,								//pushfq							//保存flag寄存器    save flag register
@@ -535,7 +537,7 @@ INLINE BYTE ContextInjectShell[] = {			//x64.asm
     0xc3,								//retn		
 };
 #else
-INLINE BYTE ContextInjectShell[] = {	//x86.asm
+INLINE BYTE ContextInjectShell[] = {	//x86.asm 书中的代码  the code in the book
     0x50,								//push	eax
     0x60,								//pushad
     0x9c,								//pushfd
@@ -551,8 +553,8 @@ INLINE BYTE ContextInjectShell[] = {	//x86.asm
     0xc3								//retn
 };
 #endif
-class Thread {
-    GenericHandle<HANDLE, NormalHandle> m_GenericHandleThread;
+class Thread {//把线程当做对象来处理  process thread as object
+    GenericHandle<HANDLE, NormalHandle> m_GenericHandleThread;//采用智能句柄  use smart handle
     DWORD m_dwThreadId = 0;
     bool m_bAttached = false;
 public:
@@ -638,7 +640,7 @@ public:
     }
 };
 template <typename T>
-class ThreadSafeVector {
+class ThreadSafeVector {//线程安全的vector thread safe vector
     std::mutex m_mutex; //lock for vector
     std::vector<T> m_vector;
 public:
