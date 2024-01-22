@@ -27,6 +27,7 @@ public:
     INLINE static void Close(HANDLE handle)NOEXCEPT { CloseHandle(handle); }
     INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }
     INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }
+    INLINE static DWORD Wait(HANDLE handle,DWORD time)NOEXCEPT{return WaitForSingleObject(handle, time);}//单位:毫秒 unit:ms
 };
 template<class Ty>
 class View:public Ty{//采用基础句柄的视图,不负责关闭句柄 use basic handle view,not responsible for closing handle
@@ -66,6 +67,10 @@ public:
         other.m_handle = Traits::InvalidHandle();
         other.m_bOwner = false;
     }
+    //等待句柄 wait handle 单位:毫秒 unit:ms
+    INLINE DWORD Wait(DWORD time)NOEXCEPT {
+        return Traits::Wait(m_handle, time);
+    }
     INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
         return m_handle;
     }
@@ -88,36 +93,6 @@ private:
         GetModuleFileNameA(NULL, szProcessName, MAX_PATH);
         return szProcessName;
     }
-    static std::string GetModuleName() NOEXCEPT {
-        HMODULE hMod = NULL;
-        TCHAR szModName[MAX_PATH];
-        std::string result;
-
-        // 获取当前函数的地址，以定位当前模块 get the address of current function to locate current module
-        if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            (LPCTSTR)&GetModuleName,
-            &hMod)) {
-            // 获取模块的文件路径 get module file path
-            if (GetModuleFileName(hMod, szModName, MAX_PATH)) {
-                // 将TCHAR转换为std::string convert TCHAR to std::string
-#ifdef UNICODE
-                std::wstring ws(szModName);
-                result.assign(ws.begin(), ws.end());
-#else
-                result = szModName;
-#endif
-            }
-            else {
-                std::cerr << "Failed to get module file name." << std::endl;
-            }
-        }
-        else {
-            std::cerr << "GetModuleHandleEx failed." << std::endl;
-        }
-
-        return result;
-    }
     template <class... Args>
     INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
         static std::once_flag flag{};
@@ -125,7 +100,7 @@ private:
         if (!instance) {
             std::call_once(flag, [&]() {//call once   只调用一次
                 instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
-                });
+            });
         }
         if (instance->bflag) {
             throw std::exception("SingleTon has been created");
@@ -140,7 +115,7 @@ private:
         if (!instance) {
             std::call_once(flag, [&]() {//call once  只调用一次
                 instance = CreateInstance();//element constructor through parameters    通过参数构造元素
-                });
+            });
         }
         if (instance->bflag) {
             throw std::exception("SingleTon has been created");
@@ -152,7 +127,7 @@ private:
 public:
     SingleTon() {
         //按类名的typeid作为事件名 create event name by typeid
-        std::string eventname = typeid(T).name()+GetCurrentProcessName()+ GetModuleName();//可选择性的加上dll的名字 optionally add dll name
+        std::string eventname = typeid(T).name()+GetCurrentProcessName();//可选择性的加上dll的名字 optionally add dll name
         //将/替换为_ replace / with _
         std::replace(eventname.begin(), eventname.end(), '\\', '_');//\\符号不能创建事件 属于特殊符号 \\ symbol can't create event is special symbol
         //创建互斥量 create event
@@ -623,7 +598,7 @@ public:
     }
     bool IsBlock() {
         //等待 wait 如果线程处于死锁状态，那么WaitForSingleObject会返回WAIT_TIMEOUT  if thread is in deadlock state,WaitForSingleObject will return WAIT_TIMEOUT
-        DWORD dwRet = WaitForSingleObject(GetHandle(), 0);
+        DWORD dwRet = m_GenericHandleThread.Wait(0);
         if (dwRet == WAIT_TIMEOUT) {
             return false;
         }else if (dwRet == WAIT_OBJECT_0) {
