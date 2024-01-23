@@ -28,11 +28,9 @@ public:
     operator T() {
         return obj;
     }
-    //жиди->
     T* operator->() {
         return &obj;
     }
-    //жиди&
     T* operator&() {
         return &obj;
     }
