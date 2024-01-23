@@ -1025,7 +1025,7 @@ public:
         if (pid != 0){
             m_pid = pid;
             m_hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_pid);
-            m_bAttached = true;
+            if(m_hProcess)m_bAttached = true;
         }
     }
     INLINE void ChangeMode(const EnumRunningMode& Mode) NOEXCEPT {
@@ -1311,7 +1311,6 @@ public:
         return  reinterpret_cast<T>(0);
     }
 private:
-    
     INLINE DWORD GetProcessIdByName(const char* processName) NOEXCEPT {//get process id by name   通过名称获取进程id
         DWORD pid = 0;
         //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
