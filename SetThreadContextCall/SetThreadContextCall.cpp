@@ -217,7 +217,6 @@ public:
     using iterator = typename std::decay_t<decltype(m_Cache)>::iterator;
     SimpleRangeCache() {
         srand((unsigned int)time(0));
-
     }
     ~SimpleRangeCache()noexcept {
         EnterCriticalSection(&lock.Get());
@@ -225,30 +224,25 @@ public:
         LeaveCriticalSection(&lock.Get());
     }
     inline void AsyncAddCache(const keyType& _key, const _Ty& _value, DWORD _validtime) {
-        return std::async(std::launch::async, [&]()->void {
+        auto future=std::async(std::launch::async, [&]()->void {
             auto nowTime = std::chrono::system_clock::now();
             auto newValue = CacheItem<_Ty>(_value, nowTime + std::chrono::milliseconds(_validtime + rand() % 30));
             auto lb = m_Cache.find(_key);
             if (lb != m_Cache.end()) {
                 lb->second = newValue;
-            }
-            else {
+            }else {
                 EnterCriticalSection(&lock.Get());
                 m_Cache.insert(lb, pair_type(_key, newValue));
                 LeaveCriticalSection(&lock.Get());
             }
             static auto firsttime = std::chrono::system_clock::now();
             if (std::chrono::duration_cast<std::chrono::milliseconds>(nowTime - firsttime).count() > 5000) {//5s
-                {
-                    firsttime = nowTime;
-                    EnterCriticalSection(&lock.Get());
-                    for (auto it = m_Cache.begin(); it != m_Cache.end();) it = (!it->second.IsValid(nowTime)) ? m_Cache.erase(it) : ++it;
-                    LeaveCriticalSection(&lock.Get());
-
-                }
-
+                firsttime = nowTime;
+                EnterCriticalSection(&lock.Get());
+                for (auto it = m_Cache.begin(); it != m_Cache.end();) it = (!it->second.IsValid(nowTime)) ? m_Cache.erase(it) : ++it;
+                LeaveCriticalSection(&lock.Get());
             }
-            }).get();
+        });
     }
     inline std::pair<iterator, bool> find(const _Tx& value) {
         keyType _key = keyType(value, value);
