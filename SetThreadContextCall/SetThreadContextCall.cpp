@@ -13,8 +13,10 @@
 #include <future>
 #include <chrono>
 #include <mutex>
+#include <map>
 #define INLINE inline
 #define NOEXCEPT noexcept
+#define PAGESIZE 0X1000
 #if defined _WIN64
 using UDWORD = DWORD64;
 #define XIP Rip//instruction pointer
@@ -30,9 +32,9 @@ public:
     INLINE static DWORD Wait(HANDLE handle,DWORD time)NOEXCEPT{return WaitForSingleObject(handle, time);}//单位:毫秒 unit:ms
 };
 template<class Ty>
-class View:public Ty{//采用基础句柄的视图,不负责关闭句柄 use basic handle view,not responsible for closing handle
+class HandleView:public Ty{//采用基础句柄的视图,不负责关闭句柄 use basic handle HandleView,not responsible for closing handle
 public:
-    INLINE static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a view  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
+    INLINE static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a HandleView  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
 };
 template<class T, class Traits>
 class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
@@ -169,8 +171,146 @@ BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dw
 LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
     return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);// 系统的 VirtualAllocEx  system VirtualAllocEx
 }
+constexpr DWORD CacheMinTTL = 128;
+constexpr DWORD CacheNormalTTL = 200;
+constexpr DWORD CacheMaxTTL = 4096;
+template<class T>
+struct RangeCmp {//仿函数
+    bool operator()(const std::pair<T, T>& p1, const std::pair<T, T>& p2) const {
+        if (p1.first >= p2.first) return false;
+        return p1.second < p2.second;
+    }
+};
+class FastMutex {
+    CRITICAL_SECTION g_cs;
+public:
+    FastMutex() {
+        InitializeCriticalSection(&g_cs);
+    }
+    CRITICAL_SECTION& Get() {
+        return g_cs;
+    }
+    ~FastMutex() {
+        DeleteCriticalSection(&g_cs);
+    }
+};
+FastMutex lock;
+template<typename _Tx>class CacheItem {
+public:
+    using timepoint = std::chrono::time_point<std::chrono::system_clock>;
+    timepoint m_endtime;
+    _Tx   m_value;
+    CacheItem() = default;
+    CacheItem(const _Tx& _value, const timepoint& _endtime) :m_endtime(_endtime), m_value(_value) {}
+    CacheItem(const _Tx&& _value, const timepoint& _endtime) :m_value(std::move(_value)), m_endtime(_endtime) {}
+    ~CacheItem() { m_value.~_Tx(); }
+    inline bool IsValid(timepoint now)noexcept { return now < m_endtime; }
+};
+template<typename _Tx, typename _Ty, class Pr = RangeCmp<_Tx>>
+class SimpleRangeCache {
+protected:
+    std::map<std::pair<_Tx, _Tx>, CacheItem<_Ty>, Pr> m_Cache;
+public:
+    using keyType = std::pair<_Tx, _Tx>;
+    using cache_item_type = _Ty;
+    using pair_type = typename std::decay_t<decltype(m_Cache)>::value_type;
+    using iterator = typename std::decay_t<decltype(m_Cache)>::iterator;
+    SimpleRangeCache() {
+        srand((unsigned int)time(0));
+
+    }
+    ~SimpleRangeCache()noexcept {
+        EnterCriticalSection(&lock.Get());
+        m_Cache.clear();
+        LeaveCriticalSection(&lock.Get());
+    }
+    inline void AsyncAddCache(const keyType& _key, const _Ty& _value, DWORD _validtime) {
+        return std::async(std::launch::async, [&]()->void {
+            auto nowTime = std::chrono::system_clock::now();
+            auto newValue = CacheItem<_Ty>(_value, nowTime + std::chrono::milliseconds(_validtime + rand() % 30));
+            auto lb = m_Cache.find(_key);
+            if (lb != m_Cache.end()) {
+                lb->second = newValue;
+            }
+            else {
+                EnterCriticalSection(&lock.Get());
+                m_Cache.insert(lb, pair_type(_key, newValue));
+                LeaveCriticalSection(&lock.Get());
+            }
+            static auto firsttime = std::chrono::system_clock::now();
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(nowTime - firsttime).count() > 5000) {//5s
+                {
+                    firsttime = nowTime;
+                    EnterCriticalSection(&lock.Get());
+                    for (auto it = m_Cache.begin(); it != m_Cache.end();) it = (!it->second.IsValid(nowTime)) ? m_Cache.erase(it) : ++it;
+                    LeaveCriticalSection(&lock.Get());
+
+                }
+
+            }
+            }).get();
+    }
+    inline std::pair<iterator, bool> find(const _Tx& value) {
+        keyType _key = keyType(value, value);
+        if (m_Cache.empty()) return { iterator(),false };
+        auto iter = m_Cache.find(_key);
+        EnterCriticalSection(&lock.Get());
+        bool IsValidItem = iter->second.IsValid(std::chrono::system_clock::now());
+        LeaveCriticalSection(&lock.Get());
+        return { iter, iter != m_Cache.end() && IsValidItem };
+    }
+    inline std::pair<iterator, bool> operator[](_Tx&& value) {
+        return find(value);
+    }
+    inline void erase(const _Tx& value) {//删除缓存
+
+        keyType _key = keyType(value, value);
+        if (m_Cache.empty()) return;
+        {
+            auto iter = m_Cache.find(_key);
+            EnterCriticalSection(&lock.Get());
+            if (iter != m_Cache.end()) m_Cache.erase(iter);
+            LeaveCriticalSection(&lock.Get());
+        }
+    }
+    inline void Clear() {
+        EnterCriticalSection(&lock.Get());
+        m_Cache.Clear();
+        LeaveCriticalSection(&lock.Get());
+    }
+};
+constexpr inline bool CheckMask(const DWORD value, const DWORD mask) {//判断vakue和mask是否相等
+    return (mask && (value & mask)) && (value <= mask);
+}
+constexpr auto USERADDR_MIN = 0x10000;
+#ifdef _WIN64
+constexpr auto USERADDR_MAX = 0x7fffffff0000;
+#else
+constexpr auto USERADDR_MAX = 0xBFFE'FFFF;
+#endif
+UDWORD maxAppAddr = USERADDR_MAX;
+UDWORD minAppAddr = USERADDR_MIN;
+static SimpleRangeCache<UDWORD, MEMORY_BASIC_INFORMATION> cache;
+inline SIZE_T VirtualQueryCacheApi(HANDLE hProcess,LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) {
+    if ((UDWORD)lpAddress > maxAppAddr) return 0;
+    auto [result, isHit] = cache.find((UDWORD)lpAddress);
+    if (isHit) {
+        if (lpMbi)*lpMbi = result->second.m_value;
+        return sizeof(MEMORY_BASIC_INFORMATION);
+    }
+    else {
+        auto ret = VirtualQueryEx(hProcess,lpAddress, lpMbi, sizeof(MEMORY_BASIC_INFORMATION));
+        if (ret > 0) {
+            UDWORD start = (UDWORD)lpMbi->AllocationBase;
+            UDWORD end = start + lpMbi->RegionSize, Ratio = 1;
+            if (CheckMask(lpMbi->Type, MEM_IMAGE | MEM_MAPPED)) Ratio = 999;
+            cache.AsyncAddCache(std::make_pair(start, end), *lpMbi, CacheNormalTTL * Ratio);
+        }
+        return ret;
+    }
+}
 DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength) {//远程查询内存 remote query memory
-    auto Ret=VirtualQueryEx(hProcess, lpAddress, lpBuffer, dwLength);//系统的 VirtualQueryEx  system
+    auto Ret= VirtualQueryCacheApi(hProcess,(LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
     return Ret;
 }
 //空闲块链表 free block list
@@ -236,7 +376,6 @@ public:
         Add(ptr, allocSize);//加入到空闲块链表 add to free block list
         return Get(size);  // 重新尝试获取内存 get memory again
     }
-#pragma optimize("",off)
     INLINE void Free(void* ptr, size_t size)NOEXCEPT {
         //查allocatebase
         MEMORY_BASIC_INFORMATION mbi{};
@@ -267,21 +406,19 @@ public:
             }
             p = &(*p)->next;
         }
-        //如果空闲块的大小大于0x1000，那么释放内存
+        //如果空闲块的大小大于PAGESIZE，那么释放内存
         p = &m_head;
         while (*p) {
             auto block = *p;
             auto next = block->next;
-            if (block->size > 0x1000) {
+            if (block->size > PAGESIZE) {
                 if (m_hProcess)VirtualFreeExApi(m_hProcess,block->ptr, block->size, MEM_DECOMMIT);
                 *p = next;
                 delete block;
-                continue;
             }
             p = &(*p)->next;
         }
     }
-#pragma optimize("",on)
     INLINE void* mallocex(size_t size)NOEXCEPT {
         auto ptr =Get(size);
         g_allocMap[ptr] = size;
@@ -300,7 +437,7 @@ private:
     std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
     std::unordered_map<void*,bool> g_allocMap2;//记录内存是不是整块分配的 record memory is not a whole block allocation
     FreeBlock* m_head;
-    GenericHandle<HANDLE, View<NormalHandle>> m_hProcess;//view
+    GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;//HandleView
 };
 INLINE void* mallocex(HANDLE hProcess,size_t size) {
     return FreeBlockList::GetInstance(hProcess).mallocex(size);//调用单例模式的函数 call singleton function
@@ -309,7 +446,7 @@ INLINE void freeex(HANDLE hProcess,void* ptr) {
     return FreeBlockList::GetInstance(hProcess).freeex(ptr);   //调用单例模式的函数 call singleton function
 }
 class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
-    GenericHandle<HANDLE, View<NormalHandle>> m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a view,not responsible for closing process handle
+    GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a HandleView,not responsible for closing process handle
     LPVOID BaseAddress = nullptr;
     int refCount = 0;
     void AddRef() NOEXCEPT {
