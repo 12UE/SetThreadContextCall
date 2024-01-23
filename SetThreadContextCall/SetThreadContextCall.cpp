@@ -132,8 +132,7 @@ private:
         }
         if (instance->bflag) {
             throw std::exception("SingleTon has been created");
-        }
-        else {
+        }else {
             return *instance.get();
         }
     }
@@ -147,8 +146,7 @@ private:
         }
         if (instance->bflag) {
             throw std::exception("SingleTon has been created");
-        }
-        else {
+        }else {
             return *instance.get();
         }
     }
@@ -203,15 +201,9 @@ struct RangeCmp {//仿函数
 class FastMutex {
     CRITICAL_SECTION g_cs;
 public:
-    FastMutex() {
-        InitializeCriticalSection(&g_cs);
-    }
-    CRITICAL_SECTION& Get() {
-        return g_cs;
-    }
-    ~FastMutex() {
-        DeleteCriticalSection(&g_cs);
-    }
+    FastMutex() {InitializeCriticalSection(&g_cs);}
+    CRITICAL_SECTION& Get() {return g_cs;}
+    ~FastMutex() {DeleteCriticalSection(&g_cs);}
 };
 FastMutex lock;
 template<typename _Tx>class CacheItem {
@@ -276,15 +268,12 @@ public:
         return find(value);
     }
     inline void erase(const _Tx& value) {//删除缓存
-
-        keyType _key = keyType(value, value);
+        keyType &_key = keyType(value, value);
         if (m_Cache.empty()) return;
-        {
-            auto iter = m_Cache.find(_key);
-            EnterCriticalSection(&lock.Get());
-            if (iter != m_Cache.end()) m_Cache.erase(iter);
-            LeaveCriticalSection(&lock.Get());
-        }
+        auto iter = m_Cache.find(_key);
+        EnterCriticalSection(&lock.Get());
+        if (iter != m_Cache.end()) m_Cache.erase(iter);
+        LeaveCriticalSection(&lock.Get());
     }
     inline void Clear() {
         EnterCriticalSection(&lock.Get());
@@ -371,7 +360,7 @@ public:
             p = &(*p)->next;
         }
         // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存 get more memory from system if not found enough memory
-        auto allocSize = (size > 0x1000) ? size : 0x1000;
+        auto allocSize = (size > PAGESIZE) ? size : PAGESIZE;
         LPVOID ptr=NULL;
         if (m_hProcess)ptr=VirtualAllocExApi(m_hProcess, nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);//调用系统的api分配内存 call system api to allocate memory
         if (ptr == nullptr) {
@@ -438,16 +427,12 @@ public:
     }
     INLINE void freeex(void* ptr)NOEXCEPT {
         auto it = g_allocMap.find(ptr);
-        if (it == g_allocMap.end()) {
-            std::cerr << "freeex: invalid pointer." << std::endl;
-            return;
-        }
+        if (it == g_allocMap.end())return;
         Free(ptr, it->second);
         g_allocMap.erase(it);
     }
 private:
     std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
-    std::unordered_map<void*,bool> g_allocMap2;//记录内存是不是整块分配的 record memory is not a whole block allocation
     FreeBlock* m_head;
     GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;//HandleView
 };
@@ -497,6 +482,12 @@ public:
         }
         return *this;
     }
+    INLINE Shared_Ptr(Shared_Ptr&& other) NOEXCEPT {//move construct  移动构造
+        BaseAddress = other.BaseAddress;
+        refCount = other.refCount;
+        other.BaseAddress = nullptr;//这样原来的指针就不会释放内存了 so the original pointer will not release memory
+        other.refCount = 0;
+    }
     INLINE LPVOID get() NOEXCEPT {//获得指针但是增加引用计数 get pointer but increase reference count
         AddRef();
         return BaseAddress;
@@ -515,6 +506,10 @@ public:
         }
     }
     INLINE operator bool() NOEXCEPT {return BaseAddress != nullptr;}
+    //判等
+    INLINE bool operator==(const Shared_Ptr& other) NOEXCEPT {return BaseAddress == other.BaseAddress;}
+    //判不等
+    INLINE bool operator!=(const Shared_Ptr& other) NOEXCEPT {return BaseAddress != other.BaseAddress;}
 };
 template<class T>Shared_Ptr make_Shared(size_t nsize, HANDLE hprocess) NOEXCEPT { return Shared_Ptr(sizeof(T) * nsize, hprocess); }
 template<class BinFunc>
@@ -557,13 +552,13 @@ template<class Tx, class Ty> INLINE size_t _ucsicmp(const Tx * str1, const Ty * 
     std::string  strtemp{};
     if constexpr (!std::is_same_v<remove_const_pointer_t<Tx>, wchar_t>){
         strtemp = str1;
-        wstr1 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring 转换为wstring
+        wstr1 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring 转换为wstring 仅是一种截断转换对于26个字母来说是安全的 only a kind of truncation conversion is safe for 26 letters
     }else {
         wstr1 = str1;
     }
     if constexpr (!std::is_same_v<remove_const_pointer_t<Ty>, wchar_t>){
         strtemp = str2;
-        wstr2 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring 转换为wstring
+        wstr2 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring 转换为wstring 仅是一种截断转换对于26个字母来说是安全的 only a kind of truncation conversion is safe for 26 letters
     }else {
         wstr2 = str2;
     }
@@ -571,7 +566,7 @@ template<class Tx, class Ty> INLINE size_t _ucsicmp(const Tx * str1, const Ty * 
     std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
     return wstr1.compare(wstr2);
 }
-enum EnumStatus {
+enum class EnumStatus {
     Continue,
     Break
 };
@@ -765,6 +760,9 @@ public:
     }
     ~Thread() NOEXCEPT {}
     HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }//获取线程句柄  get thread handle
+    operator bool(){
+        return IsRunning();
+    }
     bool IsRunning() NOEXCEPT {
         //获取线程退出代码  get thread exit code
         DWORD dwExitCode = 0;
@@ -942,8 +940,10 @@ public:
         return m_vector.end();
     }
 };
-#define POINTER_READ 0
-#define POINTER_WRITE 1
+enum class EnumRunningMode{
+    POINTER_READ,
+    POINTER_WRITE
+};
 template<class T>
 INLINE ThreadSafeVector<T> operator+(const ThreadSafeVector<T>&lhs, const ThreadSafeVector<T>&rhs) NOEXCEPT {
     ThreadSafeVector<T> result;
@@ -952,10 +952,15 @@ INLINE ThreadSafeVector<T> operator+(const ThreadSafeVector<T>&lhs, const Thread
     for (size_t i = 0; i < rhs.size(); i++)result.push_back(rhs[i]);
     return result;
 }
+class RunningMode{
+public:
+    LPVOID OriginAddr; 
+    EnumRunningMode m_RunningMode;
+};
 class Process :public SingleTon<Process> {//Singleton   单例
     GenericHandle<HANDLE,NormalHandle> m_hProcess;
     DWORD m_pid;//process id    进程id
-    int m_RunningMode = POINTER_READ;
+    EnumRunningMode m_RunningMode = EnumRunningMode::POINTER_READ;
     std::atomic_bool m_bAttached;//atomic bool  原子bool
     ThreadSafeVector<Shared_Ptr> m_vecAllocMem;//vector for allocated memory    保存分配的内存的vector
     std::unordered_map<LPVOID, LPVOID> maptoorigin;//map for save original address and allocated address, key is allocated address value is original address    保存原始地址和分配地址的map，key是分配地址，value是原始地址
@@ -975,7 +980,7 @@ class Process :public SingleTon<Process> {//Singleton   单例
         auto iter = maptoorigin.find((LPVOID)ptr);//find original address   查找原始地址
         if (iter != maptoorigin.end()){
             LPVOID OriginAddr = iter->second;//original address   原始地址
-            if (m_RunningMode == POINTER_READ){
+            if (m_RunningMode == EnumRunningMode::POINTER_READ){
                 _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address    从分配地址读取值到原始地址
             }
         }
@@ -1008,7 +1013,7 @@ class Process :public SingleTon<Process> {//Singleton   单例
             if (p){
                 m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory   emplace back到vector中避免内存泄漏可以通过clearmemory清除
                 _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer   写入值到分配地址，因为参数是指针
-                if(m_RunningMode==POINTER_READ)maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address   保存原始地址和分配地址
+                if(m_RunningMode== EnumRunningMode::POINTER_READ)maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address   保存原始地址和分配地址
                 ptr = (T)p.raw();//set parameter to allocated address   设置参数为分配地址
             }
         }
@@ -1023,7 +1028,7 @@ public:
             m_bAttached = true;
         }
     }
-    INLINE void ChangeMode(int Mode) NOEXCEPT {
+    INLINE void ChangeMode(const EnumRunningMode& Mode) NOEXCEPT {
         m_RunningMode = Mode;
     }
     //readapi
@@ -1053,7 +1058,7 @@ public:
                 for (auto bRet = Thread32First(hSnapshot, &threadEntry); bRet; bRet = Thread32Next(hSnapshot, &threadEntry)) {
                     if (threadEntry->th32OwnerProcessID == m_pid) {
                         Thread thread(threadEntry);
-                        if (!thread.IsBlock()&&thread.IsRunning())if (pre(threadEntry) == Break)break;
+                        if (thread&& pre(threadEntry) == EnumStatus::Break)break;
                     }
                 }
             }
@@ -1111,7 +1116,7 @@ public:
             thread.SetContext(ctx);//set context    设置上下文
             thread.Resume();//resume thread   恢复线程
             _thread = std::move(thread);//move thread   移动线程
-            return Break;
+            return EnumStatus::Break;
             });
         hEvent.Wait(INFINITE);//wait event
         if(maptoorigin.size()>0)postprocess(args...);//post process parameter   后处理参数
@@ -1168,7 +1173,7 @@ public:
             thread.SetContext(ctx);//set context    设置上下文
             thread.Resume();//resume thread  恢复线程
             _thread = std::move(thread);//store thread  存储线程
-            return Break;
+            return EnumStatus::Break;
         });
         hEvent.Wait(INFINITE);//wait event
         _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value 读取参数以返回值
@@ -1230,7 +1235,7 @@ public:
             thread.SetContext(ctx);//set context
             thread.Resume();//resume thread
             _thread = std::move(thread);//store thread
-            return Break;
+            return EnumStatus::Break;
             });
         hEvent.Wait(INFINITE);//wait event
     }
@@ -1285,7 +1290,7 @@ public:
             thread.SetContext(ctx);//set context
             thread.Resume();//resume thread
             _thread = std::move(thread);//move thread
-            return Break;
+            return EnumStatus::Break;
         });
         hEvent.Wait(INFINITE);//wait event
         if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
@@ -1328,10 +1333,8 @@ private:
 };
 int main(){
     auto& Process = Process::GetInstance();//get instance   获取实例
-    Process.Attach("notepad.exe");//attach process  附加进程
-    while (true){
-        std::cout << Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
-    }
+    Process.Attach("EmptyProject10.exe");//attach process  附加进程
+    std::cout << Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
     return 0;
 }
 
