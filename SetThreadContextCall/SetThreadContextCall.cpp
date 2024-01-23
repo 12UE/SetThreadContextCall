@@ -16,6 +16,27 @@
 #include <map>
 #define INLINE inline
 #define NOEXCEPT noexcept
+template<class T>
+class InitObj {
+public:
+    T obj;
+    InitObj() {
+        void* ptr = &obj;
+        DWORD size = sizeof(T);
+        memcpy(ptr, &size, sizeof(DWORD));
+    }
+    operator T() {
+        return obj;
+    }
+    //重载->
+    T* operator->() {
+        return &obj;
+    }
+    //重载&
+    T* operator&() {
+        return &obj;
+    }
+};
 #define PAGESIZE 0X1000
 #if defined _WIN64
 using UDWORD = DWORD64;
@@ -165,10 +186,10 @@ public:
     void* ptr;  //指针 pointer
     FreeBlock* next;//下一个块 next block 其实就是一个链表 actually is a linked list
 };
-BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {//远程释放内存 remote free memory
+INLINE BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {//远程释放内存 remote free memory
     return VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);//系统的 VirtualFreeEx  system VirtualFreeEx
 }
-LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
+INLINE LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
     return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);// 系统的 VirtualAllocEx  system VirtualAllocEx
 }
 constexpr DWORD CacheMinTTL = 128;
@@ -303,9 +324,8 @@ inline SIZE_T VirtualQueryCacheApi(HANDLE hProcess,LPVOID lpAddress, MEMORY_BASI
         return ret;
     }
 }
-DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength) {//远程查询内存 remote query memory
-    auto Ret= VirtualQueryCacheApi(hProcess,(LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
-    return Ret;
+INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength) {//远程查询内存 remote query memory
+    return VirtualQueryCacheApi(hProcess, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
 }
 //空闲块链表 free block list
 class FreeBlockList:public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
@@ -1031,9 +1051,9 @@ public:
         if (m_bAttached){
             GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (hSnapshot){
-                THREADENTRY32 threadEntry = { sizeof(THREADENTRY32), };
+                InitObj<THREADENTRY32> threadEntry{};
                 for (auto bRet = Thread32First(hSnapshot, &threadEntry); bRet; bRet = Thread32Next(hSnapshot, &threadEntry)) {
-                    if (threadEntry.th32OwnerProcessID == m_pid) {
+                    if (threadEntry->th32OwnerProcessID == m_pid) {
                         Thread thread(threadEntry);
                         if (!thread.IsBlock()&&thread.IsRunning())if (pre(threadEntry) == Break)break;
                     }
@@ -1060,12 +1080,9 @@ public:
         strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件  create event
         GenericHandle<HANDLE,NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-        //获取地址  get address
-        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
-        auto pGetProcAddress = (LPVOID)GetProcAddress;
         //设置函数地址  set function address
-        threadData.pFunc[0] = (LPVOID)pLoadLibrary;
-        threadData.pFunc[1] = (LPVOID)pGetProcAddress;
+        threadData.pFunc[0] = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
+        threadData.pFunc[1] = (LPVOID)GetProcAddress;
         EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
@@ -1291,17 +1308,19 @@ public:
         return  reinterpret_cast<T>(0);
     }
 private:
+    
     INLINE DWORD GetProcessIdByName(const char* processName) NOEXCEPT {//get process id by name   通过名称获取进程id
         DWORD pid = 0;
         //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
         GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (hSnapshot){
-            PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
+            //PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
+            InitObj<PROCESSENTRY32W> processEntry{};
             //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name is processName
             for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)){
                 //比较进程名 compare process name 不区分大小写不区分char*和wchar_t* case insensitive for char* and wchar_t*
-                if (_ucsicmp(processEntry.szExeFile, processName) == 0){
-                    pid = processEntry.th32ProcessID;
+                if (_ucsicmp(processEntry->szExeFile, processName) == 0){
+                    pid = processEntry->th32ProcessID;
                     break;
                 }
             }
