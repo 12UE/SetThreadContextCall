@@ -728,23 +728,24 @@ INLINE BYTE ContextInjectShell[] = {	//x86.asm 书中的代码  the code in the book
 class Thread {//把线程当做对象来处理  process thread as object
     GenericHandle<HANDLE, NormalHandle> m_GenericHandleThread;//采用智能句柄  use smart handle
     DWORD m_dwThreadId = 0;
-    bool m_bAttached = false;
+    std::atomic_bool m_bAttached = false;
 public:
     Thread() = default;
     Thread(DWORD dwThreadId) NOEXCEPT {    //打开线程 open thread
         m_dwThreadId = dwThreadId;
         m_GenericHandleThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
-        m_bAttached = true;
+        if(m_GenericHandleThread)m_bAttached = true;
     }
     Thread(const THREADENTRY32& threadEntry) NOEXCEPT {   //从threadentry32构造 construct from threadentry32  to open thread
         m_dwThreadId = threadEntry.th32ThreadID;
         m_GenericHandleThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
-        m_bAttached = true;
+        if (m_GenericHandleThread)m_bAttached = true;
     }
     Thread(Thread&& other) NOEXCEPT {    //移动构造  move construct
         m_GenericHandleThread = std::move(other.m_GenericHandleThread);
         m_dwThreadId = other.m_dwThreadId;
-        m_bAttached = other.m_bAttached;
+        bool Attached = other.m_bAttached;
+        m_bAttached= Attached;
         other.m_dwThreadId = 0;
         other.m_bAttached = false;
     }
@@ -752,7 +753,8 @@ public:
         if (this != &other){
             m_GenericHandleThread = std::move(other.m_GenericHandleThread);
             m_dwThreadId = other.m_dwThreadId;
-            m_bAttached = other.m_bAttached;
+            bool Attached = other.m_bAttached;
+            m_bAttached= Attached;
             other.m_dwThreadId = 0;
             other.m_bAttached = false;
         }
@@ -765,53 +767,74 @@ public:
     }
     bool IsRunning() NOEXCEPT {
         //获取线程退出代码  get thread exit code
-        DWORD dwExitCode = 0;
-        if (GetExitCodeThread(GetHandle(), &dwExitCode)){
-            if (dwExitCode == STILL_ACTIVE){
-                return true;
+        if (m_bAttached) {
+            DWORD dwExitCode = 0;
+            if (GetExitCodeThread(GetHandle(), &dwExitCode)) {
+                if (dwExitCode == STILL_ACTIVE) {
+                    return true;
+                }
             }
         }
         return false;
     }
     bool IsBlock() {
         //等待 wait 如果线程处于死锁状态，那么WaitForSingleObject会返回WAIT_TIMEOUT  if thread is in deadlock state,WaitForSingleObject will return WAIT_TIMEOUT
-        DWORD dwRet = m_GenericHandleThread.Wait(0);
-        if (dwRet == WAIT_TIMEOUT) {
-            return false;
-        }else if (dwRet == WAIT_OBJECT_0) {
-            return true;
+        if (m_bAttached) {
+            DWORD dwRet = m_GenericHandleThread.Wait(0);
+            if (dwRet == WAIT_TIMEOUT) {
+                return false;
+            }
+            else if (dwRet == WAIT_OBJECT_0) {
+                return true;
+            }
         }
         return false;
     }
     //获取线程上下文  get thread context
     CONTEXT GetContext() NOEXCEPT {
-        CONTEXT context = { 0 };
-        context.ContextFlags = CONTEXT_FULL;
-        GetThreadContext(GetHandle(), &context);
+        CONTEXT context = {};
+        if (m_bAttached) {
+            context.ContextFlags = CONTEXT_FULL;
+            GetThreadContext(GetHandle(), &context);
+        }
         return context;
     }
     //设置线程的上下文  set thread context
     void SetContext(CONTEXT& context) NOEXCEPT {
-        SetThreadContext(GetHandle(), &context);
+        if (m_bAttached) {
+            SetThreadContext(GetHandle(), &context);
+        }
     }
     //暂停线程执行  suspend thread execution
     void Suspend() NOEXCEPT {
-        SuspendThread(GetHandle());
+        if (m_bAttached) {
+            SuspendThread(GetHandle());
+        }
     }
     //恢复线程执行  resume thread execution
     void Resume() NOEXCEPT {
-        ResumeThread(GetHandle());
+        if (m_bAttached) {
+            ResumeThread(GetHandle());
+        }
     }
     //PostThreadMessage  向线程发送消息  send message to thread
     BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) NOEXCEPT {//向线程发送消息  send message to thread
-        return ::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
+        BOOL bRet = FALSE;
+        if (m_bAttached) {
+            bRet=::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
+        }
+        return bRet;
     }
     void QueApc(void* Addr) NOEXCEPT {//往线程中注入APC inject APC to thread
-        QueueUserAPC((PAPCFUNC)Addr, GetHandle(), 0);
+        if (m_bAttached) {
+            QueueUserAPC((PAPCFUNC)Addr, GetHandle(), 0);
+        }
     }
     //设置线程优先级  set thread priority 竟然还会触发APC的强制执行  it will trigger APC to execute forcibly
     void SetPriority(int nPriority = THREAD_PRIORITY_HIGHEST) NOEXCEPT {
-        SetThreadPriority(GetHandle(), nPriority);
+        if (m_bAttached) {
+            SetThreadPriority(GetHandle(), nPriority);
+        }
     }
 };
 template <typename T>
