@@ -74,6 +74,10 @@ public:
     inline bool operator==(const T& handle)NOEXCEPT {//重载== overload ==
         return m_handle == handle;
     }
+    //重载!= overload !=
+    inline bool operator!=(const T& handle)NOEXCEPT {//重载!= overload !=
+        return m_handle != handle;
+    }
     INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
         return m_handle;
     }
@@ -145,6 +149,14 @@ public:
         return GetInstanceImpl(std::forward<Args>(args)...);
     }
 };
+//debugoutput
+template<class T>
+void DebugOutput(const T& t) {
+    //转为字符串
+    std::stringstream ss;
+    ss << t;
+    OutputDebugStringA(ss.str().c_str());
+}
 class FreeBlock {//空闲块 free block
 public:
     size_t size;//大小 size
@@ -156,6 +168,10 @@ BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dw
 }
 LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
     return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);// 系统的 VirtualAllocEx  system VirtualAllocEx
+}
+DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength) {//远程查询内存 remote query memory
+    auto Ret=VirtualQueryEx(hProcess, lpAddress, lpBuffer, dwLength);//系统的 VirtualQueryEx  system
+    return Ret;
 }
 //空闲块链表 free block list
 class FreeBlockList:public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
@@ -220,44 +236,52 @@ public:
         Add(ptr, allocSize);//加入到空闲块链表 add to free block list
         return Get(size);  // 重新尝试获取内存 get memory again
     }
+#pragma optimize("",off)
     INLINE void Free(void* ptr, size_t size)NOEXCEPT {
-        //size归还空间给剩余空间最大的给加上去 return size to the largest remaining space
+        //查allocatebase
+        MEMORY_BASIC_INFORMATION mbi{};
+        VirtualQueryExApi(m_hProcess, ptr, &mbi, sizeof(mbi));
+        //合并到空闲链表当中allcatebase相同的块
         auto p = &m_head;
-        auto Maxblock = (FreeBlock*)nullptr;
         while (*p) {
-            if ((*p)->ptr == ptr) {
-                (*p)->size += size;//归还空间 return space
-                if (Maxblock == nullptr)Maxblock = *p;
+            auto allocatebase = mbi.AllocationBase;
+            if ((*p)->ptr == allocatebase) {
+              //合并size到块内
+                auto block = *p;
+                block->size += size;//合并size到块内
+                break;
+            }
+            p = &(*p)->next;//下一个块 next block
+        }
+        //释放内存 free memory
+        //遍历空闲链表，如果有相邻的块，那么合并这两个块
+        p = &m_head;
+        while (*p) {
+            auto block = *p;
+            auto next = block->next;
+            if (next && (char*)block->ptr + block->size == next->ptr) {
+                block->size += next->size;
+                block->next = next->next;
+                delete next;
+                continue;
             }
             p = &(*p)->next;
         }
-        //合并空间 merge space
-        if (Maxblock) {
-            p = &m_head;
-            while (*p) {
-                if ((*p)->ptr == (char*)Maxblock->ptr + Maxblock->size) {
-                    Maxblock->size += (*p)->size;//合并空间 merge space
-                    auto next = (*p)->next;
-                    delete *p;//删除空闲块 delete free block
-                    *p = next;
-                }
-                else {
-                    p = &(*p)->next;
-                }
-            }
-        }
-        //大于0x2000的空闲块释放    free free block greater than 0x2000
-        auto block = m_head;
-        while (block) {
+        //如果空闲块的大小大于0x1000，那么释放内存
+        p = &m_head;
+        while (*p) {
+            auto block = *p;
             auto next = block->next;
-            if (block->size > 0x2000) {
-                if (m_hProcess)VirtualFreeExApi(m_hProcess,block->ptr, block->size, MEM_RELEASE);
+            if (block->size > 0x1000) {
+                if (m_hProcess)VirtualFreeExApi(m_hProcess,block->ptr, block->size, MEM_DECOMMIT);
+                *p = next;
                 delete block;
+                continue;
             }
-            block = next;
+            p = &(*p)->next;
         }
-
     }
+#pragma optimize("",on)
     INLINE void* mallocex(size_t size)NOEXCEPT {
         auto ptr =Get(size);
         g_allocMap[ptr] = size;
