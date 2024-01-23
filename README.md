@@ -15,7 +15,7 @@ memcpy是一个标准的C库函数，用于在内存中复制字节，通常用�
 
 此外，虚拟地址并不总是对应于实际的物理内存。操作系统使用虚拟内存技术，将虚拟地址映射到物理内存。这意味着，即使你有一个进程的虚拟地址，你也不能直接访问它对应的物理内存。你需要通过操作系统提供的机制，如ReadProcessMemory或memcpy，来访问这些内存
 ### 注意
-编译环境:Visual Studio 2022 Profresional.  
+编译环境:Visual Studio 2022 Profresional.  只支持x64因为x86取函数长度有问题
 ## 使用方法
 ```C++
 int main()
