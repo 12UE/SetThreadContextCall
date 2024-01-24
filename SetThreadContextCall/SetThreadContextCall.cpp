@@ -686,7 +686,7 @@ std::wstring to_wstring(const std::string& str) {
     delete[] pwszDst;
     return wstr;
 }
-template<class Tx, class Ty> INLINE size_t _ucsicmp(const Tx * str1, const Ty * str2) NOEXCEPT {//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
+template<class Tx, class Ty> INLINE bool _ucsicmp(const Tx * str1, const Ty * str2) NOEXCEPT {//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
     if (!str1 || !str2) throw std::exception("str1 or str2 is nullptr");
     std::wstring wstr1{}, wstr2{};
     std::string  strtemp{};
@@ -704,7 +704,7 @@ template<class Tx, class Ty> INLINE size_t _ucsicmp(const Tx * str1, const Ty * 
     }
     std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower 转换为小写
     std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
-    return wstr1.compare(wstr2);
+    return wstr1.compare(wstr2)==0;
 }
 enum class EnumStatus {
     Continue,
@@ -1484,7 +1484,7 @@ private:
             //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name is processName
             for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)){
                 //比较进程名 compare process name 不区分大小写不区分char*和wchar_t* case insensitive for char* and wchar_t*
-                if (_ucsicmp(processEntry->szExeFile, processName) == 0){
+                if (_ucsicmp(processEntry->szExeFile, processName)){
                     pid = processEntry->th32ProcessID;
                     break;
                 }
