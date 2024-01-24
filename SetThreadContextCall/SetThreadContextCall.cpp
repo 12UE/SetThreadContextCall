@@ -74,6 +74,7 @@ public:
     GenericHandle& operator =(const GenericHandle&) = delete;//½ûÖ¹¿½±´¸³Öµº¯Êý disable copy assignment
     INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {   //ÒÆ¶¯¸³Öµ move assignment
         if (m_handle != other.m_handle) {
+            m_handle = other.m_handle;
             m_bOwner = other.m_bOwner;
             other.m_handle = Traits::InvalidHandle();
             other.m_bOwner = false;
