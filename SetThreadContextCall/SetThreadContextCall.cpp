@@ -73,8 +73,7 @@ public:
     GenericHandle(GenericHandle&) = delete;//禁止拷贝构造函数 disable copy constructor
     GenericHandle& operator =(const GenericHandle&) = delete;//禁止拷贝赋值函数 disable copy assignment
     INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {   //移动赋值 move assignment
-        if (this != &other) {
-            m_handle = other.m_handle;
+        if (m_handle != other.m_handle) {
             m_bOwner = other.m_bOwner;
             other.m_handle = Traits::InvalidHandle();
             other.m_bOwner = false;
@@ -98,6 +97,10 @@ public:
     }
     INLINE operator bool() NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
         return IsValid();
+    }
+    //重载取地址
+    INLINE T* operator&()NOEXCEPT {
+        return &m_handle;
     }
 };
 template <typename T>
