@@ -116,8 +116,8 @@ class Instance {
     uintptr_t objaddr;
     LPVOID mapaddr;
     bool isOwend = false;
-    HANDLE hFile;
 public:
+    HANDLE hFile;
     Instance(uintptr_t objaddr, LPVOID _mapaddr, bool isOwn, HANDLE hFile) :objaddr(objaddr), isOwend(isOwn), hFile(hFile), mapaddr(_mapaddr) {
     }
     ~Instance() {
@@ -208,15 +208,20 @@ template<class T>
 class InstanceMangerBase {
 public:
     std::vector<T*> instances;
+    std::vector<HANDLE> handles;
     static InstanceMangerBase& GetInstance() {
         static InstanceMangerBase instance;
         return instance;
     }
     ~InstanceMangerBase() {
         Clear();
+        RemoveHandle();
     }
     void InsertObj(T* obj) {
         instances.emplace_back(obj);
+    }
+    void InsertHandle(HANDLE handle) {
+        handles.emplace_back(handle);
     }
     void Remove(T* obj) {
         for (auto it = instances.begin(); it != instances.end(); ++it) {
@@ -225,6 +230,17 @@ public:
                 break;
             }
         }
+    }
+    void RemoveHandle() {
+        // 对向量进行排序
+        std::sort(handles.begin(), handles.end());
+
+        // 使用 std::unique 移除相邻的重复元素
+        handles.erase(std::unique(handles.begin(), handles.end()), handles.end());
+        //关闭句柄
+        for (auto& it : handles)CloseHandle(it);
+        handles.clear();
+
     }
     void Clear() {
         for (auto& it : instances)delete it;
@@ -236,15 +252,19 @@ class SingleTon {
 private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)//删除拷贝构造函数和拷贝赋值函数 delete copy constructor and copy assignment
         static INLINE T* CreateInstance() NOEXCEPT {
-        auto obj = SingleInstance<T>().get();
-        InstanceMangerBase<T>::GetInstance().InsertObj(obj);
-        return obj;
+        auto obj = SingleInstance<T>();
+        auto objptr = obj.get();
+        InstanceMangerBase<T>::GetInstance().InsertObj(objptr);
+        InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);
+        return objptr;
     }//创建一个类的实例 create a instance of class
     template <class... Args>
     static INLINE T* CreateInstance(Args&& ...args) NOEXCEPT {
-        auto obj = SingleInstance<T>(std::forward<Args>(args)...).get();
-        InstanceMangerBase<T>::GetInstance().InsertObj(obj);
-        return obj;
+        auto obj = SingleInstance<T>(std::forward<Args>(args)...);
+        auto objptr = obj.get();
+        InstanceMangerBase<T>::GetInstance().InsertObj(objptr);
+        InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);
+        return objptr;
     }
     template <class... Args>
     INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
