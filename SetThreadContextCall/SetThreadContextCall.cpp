@@ -81,12 +81,6 @@ public:
         }
         return *this;
     }
-    INLINE GenericHandle(GenericHandle&& other)NOEXCEPT {//移动构造 move construct
-        m_handle = other.m_handle;
-        m_bOwner = other.m_bOwner;
-        other.m_handle = Traits::InvalidHandle();
-        other.m_bOwner = false;
-    }
     //等待句柄 wait handle 单位:毫秒 unit:ms
     INLINE DWORD Wait(DWORD time)NOEXCEPT {
         return Traits::Wait(m_handle, time);
@@ -106,66 +100,178 @@ public:
         return IsValid();
     }
 };
-#define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&)=delete;TYPE(TYPE&&) = delete;void operator= (const TYPE&) = delete;void operator= (TYPE&&) = delete;
+template <typename T>
+std::string GetMapName() {
+    DWORD pid = GetCurrentProcessId();
+    std::string pidstr = std::to_string(pid);
+    std::string name = typeid(T).name();
+    std::string ret = pidstr + name;
+    return ret;
+}
+template<class T>
+class Instance {
+    uintptr_t objaddr;
+    LPVOID mapaddr;
+    bool isOwend = false;
+    HANDLE hFile;
+public:
+    Instance(uintptr_t objaddr, LPVOID _mapaddr, bool isOwn, HANDLE hFile) :objaddr(objaddr), isOwend(isOwn), hFile(hFile), mapaddr(_mapaddr) {
+    }
+    ~Instance() {
+        if (isOwend) {
+            UnmapViewOfFile(mapaddr);
+        }
+    }
+    T* get() {
+        return (T*)objaddr;
+    }
+};
+template<class T>
+class InstanceManger {
+public:
+    void* objaddr;//管理指针
+    static Instance<T> CreateInstance(InstanceManger* thisinstance) {
+        std::atomic_bool Owend = false;
+        HANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
+        if (!hFile) {
+            // 创建文件映射
+            hFile = CreateFileMappingA(
+                INVALID_HANDLE_VALUE, // 使用系统分页文件
+                NULL,                 // 默认安全属性
+                PAGE_READWRITE,       // 读写权限
+                0,                    // 最大对象大小（高位）
+                sizeof(T),            // 最大对象大小（低位）
+                GetMapName<T>().c_str()); // 映射对象的名字
+            Owend = true;
+        }
+        if (!hFile) {
+            throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));
+        }
+        T* p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
+        uintptr_t objaddr = *(uintptr_t*)p;
+        if (Owend && objaddr == NULL) {
+            //申请内存
+            auto obj = new T();
+            //写入到objaddr
+            *(uintptr_t*)p = (uintptr_t)obj;
+        }
+        Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);
+        return ret;
+    }
+    template<class... Args>
+    static Instance<T> CreateInstance(InstanceManger* thisinstance, Args&&... args) {
+        std::atomic_bool Owend = false;
+        HANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
+        if (!hFile) {
+            // 创建文件映射
+            hFile = CreateFileMappingA(
+                INVALID_HANDLE_VALUE, // 使用系统分页文件
+                NULL,                 // 默认安全属性
+                PAGE_READWRITE,       // 读写权限
+                0,                    // 最大对象大小（高位）
+                sizeof(T),            // 最大对象大小（低位）
+                GetMapName<T>().c_str()); // 映射对象的名字
+            Owend = true;
+        }
+        if (!hFile) {
+            throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));
+        }
+        T* p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
+        uintptr_t objaddr = *(uintptr_t*)p;
+        if (Owend && objaddr == NULL) {
+            //申请内存
+            auto obj = new T(std::forward<Args>(args)...);
+            //写入到objaddr
+            *(uintptr_t*)p = (uintptr_t)obj;
+        }
+        Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);
+        return ret;
+    }
+};
+template<class T>
+decltype(auto) SingleInstance() {
+    InstanceManger<T> thisinstance;
+    return InstanceManger<T>::CreateInstance(&thisinstance);
+}
+template<class T, class... Args>
+decltype(auto) SingleInstance(Args&&... args) {
+    InstanceManger<T> thisinstance;
+    return InstanceManger<T>::CreateInstance(&thisinstance, args...);
+}
+#define INLINE inline
+#define NOEXCEPT noexcept
+#define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&) = delete; TYPE(TYPE&&) = delete; void operator= (const TYPE&) = delete; void operator= (TYPE&&) = delete;
+template<class T>
+class InstanceMangerBase {
+public:
+    std::vector<T*> instances;
+    static InstanceMangerBase& GetInstance() {
+        static InstanceMangerBase instance;
+        return instance;
+    }
+    ~InstanceMangerBase() {
+        Clear();
+    }
+    void InsertObj(T* obj) {
+        instances.emplace_back(obj);
+    }
+    void Remove(T* obj) {
+        for (auto it = instances.begin(); it != instances.end(); ++it) {
+            if (*it == obj) {
+                instances.erase(it);
+                break;
+            }
+        }
+    }
+    void Clear() {
+        for (auto& it : instances)delete it;
+        instances.clear();
+    }
+};
 template<typename T >
-class SingleTon {//这种单例是线程安全的,同一个进程内只会创建一个实例 This singleton is thread safe, only one instance will be created in the same process
+class SingleTon {
 private:
     DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)//删除拷贝构造函数和拷贝赋值函数 delete copy constructor and copy assignment
-    std::atomic_bool bflag = false;//标记是否已经创建了实例 mark whether the instance has been created
-    GenericHandle<HANDLE, NormalHandle> hEvent;//智能句柄 smart handle
-    static INLINE std::shared_ptr<T> CreateInstance() NOEXCEPT { return std::make_shared<T>(); }//创建一个类的实例 create a instance of class
+        static INLINE T* CreateInstance() NOEXCEPT {
+        auto obj = SingleInstance<T>().get();
+        InstanceMangerBase<T>::GetInstance().InsertObj(obj);
+        return obj;
+    }//创建一个类的实例 create a instance of class
     template <class... Args>
-    static INLINE std::shared_ptr<T> CreateInstance(Args&& ...args) NOEXCEPT { return std::make_shared<T>(args...); }//用参数构造一个类的实例 create a instance of class by parameters 两个CreateInstance函数是为了支持参数构造两个CreateInstance函数是为了支持参数构造
-    std::string GetCurrentProcessName() NOEXCEPT {//获取当前进程名 get current process name
-        char szProcessName[MAX_PATH] = { 0 };//预留空间 reserve space
-        GetModuleFileNameA(NULL, szProcessName, MAX_PATH);
-        return szProcessName;
+    static INLINE T* CreateInstance(Args&& ...args) NOEXCEPT {
+        auto obj = SingleInstance<T>(std::forward<Args>(args)...).get();
+        InstanceMangerBase<T>::GetInstance().InsertObj(obj);
+        return obj;
     }
     template <class... Args>
     INLINE static T& GetInstanceImpl(Args&& ...args) NOEXCEPT {
         static std::once_flag flag{};
-        static std::shared_ptr<T> instance = nullptr;
+        static T* instance = nullptr;
         if (!instance) {
             std::call_once(flag, [&]() {//call once   只调用一次
                 instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
-            });
+                });
         }
-        if (instance->bflag) {
-            throw std::exception("SingleTon has been created");
-        }else {
-            return *instance.get();
-        }
+        return *instance;
     }
     INLINE static T& GetInstanceImpl() NOEXCEPT {
         static std::once_flag flag{};
-        static std::shared_ptr<T> instance = nullptr;
+        static T* instance = nullptr;
         if (!instance) {
             std::call_once(flag, [&]() {//call once  只调用一次
                 instance = CreateInstance();//element constructor through parameters    通过参数构造元素
-            });
+                });
         }
-        if (instance->bflag) {
-            throw std::exception("SingleTon has been created");
-        }else {
-            return *instance.get();
-        }
+        return *instance;
     }
 public:
-    SingleTon() {
-        //按类名的typeid作为事件名 create event name by typeid
-        std::string eventname = typeid(T).name()+GetCurrentProcessName();//可选择性的加上dll的名字 optionally add dll name
-        //将/替换为_ replace / with _
-        std::replace(eventname.begin(), eventname.end(), '\\', '_');//\\符号不能创建事件 属于特殊符号 \\ symbol can't create event is special symbol
-        //创建互斥量 create event
-        hEvent = CreateEventA(NULL, FALSE, FALSE, eventname.c_str());//利用同名事件来检查是否已经创建了实例 use same name event to check whether the instance has been created
-        //检查互斥量是否已经被创建 check event is created
-        bflag = (GetLastError() == ERROR_ALREADY_EXISTS) ? true : false;
-        if (!hEvent)throw std::exception("CreateEventA failed");
-    }
-    ~SingleTon() { }
+    SingleTon() = default;
     template <class... Args>
-    INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {//get instance this function is thread safe and support parameter    此函数是线程安全的并且支持参数
+    INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {
         return GetInstanceImpl(std::forward<Args>(args)...);
+    }
+    static T* GetInstancePtr() NOEXCEPT {
+        return &GetInstanceImpl();
     }
 };
 //debugoutput
@@ -546,19 +652,30 @@ template<class T>struct has_type<T, T> { static constexpr bool value = true; }; 
 template<class T1, class ...Args>constexpr bool has_type_v = has_type<T1, Args...>::value;
 template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer  移除const指针
 template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer   移除const指针
+std::wstring to_wstring(const std::string& str) {
+   //windowsapi 转换 windowsapi transform
+    int nLen = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, NULL, 0);
+    if (nLen == 0) return L"";
+    wchar_t* pwszDst = new wchar_t[nLen];
+    if (!pwszDst) return L"";
+    MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, pwszDst, nLen);
+    std::wstring wstr(pwszDst);
+    delete[] pwszDst;
+    return wstr;
+}
 template<class Tx, class Ty> INLINE size_t _ucsicmp(const Tx * str1, const Ty * str2) NOEXCEPT {//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
     if (!str1 || !str2) throw std::exception("str1 or str2 is nullptr");
     std::wstring wstr1{}, wstr2{};
     std::string  strtemp{};
     if constexpr (!std::is_same_v<remove_const_pointer_t<Tx>, wchar_t>){
         strtemp = str1;
-        wstr1 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring 转换为wstring 仅是一种截断转换对于26个字母来说是安全的 only a kind of truncation conversion is safe for 26 letters
+        wstr1 = to_wstring(strtemp);
     }else {
         wstr1 = str1;
     }
     if constexpr (!std::is_same_v<remove_const_pointer_t<Ty>, wchar_t>){
         strtemp = str2;
-        wstr2 = std::wstring(strtemp.begin(), strtemp.end());//transform to wstring 转换为wstring 仅是一种截断转换对于26个字母来说是安全的 only a kind of truncation conversion is safe for 26 letters
+        wstr2 = to_wstring(strtemp);
     }else {
         wstr2 = str2;
     }
