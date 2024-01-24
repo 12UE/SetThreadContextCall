@@ -180,8 +180,7 @@ public:
             throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));
         }
         T* p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
-        uintptr_t objaddr = *(uintptr_t*)p;
-        if (Owend && objaddr == NULL) {
+        if (Owend && *(uintptr_t*)p == NULL) {
             //…Í«Îƒ⁄¥Ê
             auto obj = new T(std::forward<Args>(args)...);
             //–¥»ÎµΩobjaddr
