@@ -671,7 +671,7 @@ namespace stc{
         }
         std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower 转换为小写
         std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
-        return wstr1.compare(wstr2) == 0;
+        return wstr1.compare(wstr2) == 0;//容易忘记这里写什么才是正确的,这里是0,因为compare返回0表示相等 easy to forget what to write here is correct,here is 0,because compare return 0 means equal
     }
     enum class EnumStatus {
         Continue,
