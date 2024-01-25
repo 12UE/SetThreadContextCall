@@ -575,11 +575,7 @@ namespace stc{
             AddRef();
             return BaseAddress;
         }
-        INLINE LPVOID raw() const NOEXCEPT { return BaseAddress; }//不增加引用计数的获取raw指针 get raw pointer without increasing reference count
-        INLINE uintptr_t getuintptr() NOEXCEPT {//返回远程地址的uintptr_t值 return uintptr_t value of remote address
-            AddRef();
-            return (uintptr_t)BaseAddress;
-        }
+        INLINE LPVOID raw() const NOEXCEPT { return BaseAddress; }//不增加引用计数的获取raw指针 get raw pointer 
         INLINE ~Shared_Ptr() NOEXCEPT { Release(); }
         INLINE void Release() NOEXCEPT {//release and refCount-- 引用计数减一
             refCount--;
@@ -896,7 +892,7 @@ namespace stc{
             return context;
         }
         //设置线程的上下文  set thread context
-        void SetContext(CONTEXT& context) NOEXCEPT {
+        void SetContext(const CONTEXT& context) NOEXCEPT {
             if (m_bAttached) {
                 SetThreadContext(GetHandle(), &context);
             }
