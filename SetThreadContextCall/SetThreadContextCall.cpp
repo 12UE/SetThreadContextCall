@@ -462,13 +462,6 @@ public:
             std::cerr << "VirtualAlloc failed." << std::endl;
             return nullptr;
         }
-        SIZE_T written = 0;
-        //分配一个临时空间用于存0   allocate a temporary space to store 0
-        std::unique_ptr<char[]> temp(new char[allocSize]());
-        memset(temp.get(), 0, allocSize);
-        if (!WriteProcessMemory(m_hProcess,ptr, temp.get(), allocSize, &written)) {//将0写入到分配的内存 write 0 to allocated memory
-            std::cerr << "WriteProcessMemory failed." << std::endl;
-        }
         Add(ptr, allocSize);//加入到空闲块链表 add to free block list
         return Get(size);  // 重新尝试获取内存 get memory again
     }
