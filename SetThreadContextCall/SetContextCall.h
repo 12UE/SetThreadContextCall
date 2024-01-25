@@ -1138,43 +1138,45 @@ namespace stc{
             strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
             //创建事件  create event
             GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-            threadData.pFunc[0] = (LPVOID)LoadLibraryA;
-            threadData.pFunc[1] = (LPVOID)GetProcAddress;
-            EnumThread([&](auto& te32)->EnumStatus {
-                auto thread = Thread(te32);//construct thread   构造线程
-                thread.Suspend();//suspend thread   暂停线程
-                auto ctx = thread.GetContext();//get context    获取上下文
-                auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory   分配内存
-                m_vecAllocMem.emplace_back(lpShell);//
-                DATA_CONTEXT dataContext{};
-                memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-                if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter  处理参数
-                threadData.fn = _Fx;
-                threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
-                auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address  获取函数地址
-                auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
-                auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
-                m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
-                _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
-                dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address  设置函数地址
-                dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
-                using parametertype = decltype(threadData);
-                auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
-                m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
-                _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
-                dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
-                _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address  设置参数地址
-                ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
-                _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写入datacontext
-                thread.SetContext(ctx);//set context    设置上下文
-                thread.Resume();//resume thread   恢复线程
-                return EnumStatus::Break;
-                });
-            hEvent.Wait(INFINITE);//wait event
-            if (maptoorigin.size() > 0)postprocess(args...);//post process parameter   后处理参数
-            maptoorigin.clear();//clear map  清除map
-            _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
-            return threadData.retdata;//return value    返回值
+            if (hEvent) {
+                threadData.pFunc[0] = (LPVOID)LoadLibraryA;
+                threadData.pFunc[1] = (LPVOID)GetProcAddress;
+                EnumThread([&](auto& te32)->EnumStatus {
+                    auto thread = Thread(te32);//construct thread   构造线程
+                    thread.Suspend();//suspend thread   暂停线程
+                    auto ctx = thread.GetContext();//get context    获取上下文
+                    auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory   分配内存
+                    m_vecAllocMem.emplace_back(lpShell);//
+                    DATA_CONTEXT dataContext{};
+                    memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
+                    if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter  处理参数
+                    threadData.fn = _Fx;
+                    threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
+                    auto pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address  获取函数地址
+                    auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+                    auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
+                    m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
+                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
+                    dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address  设置函数地址
+                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
+                    using parametertype = decltype(threadData);
+                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
+                    m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
+                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
+                    dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
+                    _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address  设置参数地址
+                    ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
+                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写入datacontext
+                    thread.SetContext(ctx);//set context    设置上下文
+                    thread.Resume();//resume thread   恢复线程
+                    return EnumStatus::Break;
+                    });
+                hEvent.Wait(INFINITE);//wait event
+                if (maptoorigin.size() > 0)postprocess(args...);//post process parameter   后处理参数
+                maptoorigin.clear();//clear map  清除map
+                _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
+                return threadData.retdata;//return value    返回值
+            }
         }
         template <class _Fn>
         INLINE decltype(auto) SetContextCallImpl(_Fn&& _Fx) NOEXCEPT {
@@ -1244,38 +1246,40 @@ namespace stc{
             strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
             //创建事件  create event
             GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-            threadData.pFunc[0] = (LPVOID)LoadLibraryA;
-            threadData.pFunc[1] = (LPVOID)GetProcAddress;
-            EnumThread([&](auto& te32)->EnumStatus {
-                auto thread = Thread(te32);//construct thread   构造线程
-                thread.Suspend();//suspend thread   暂停线程
-                auto ctx = thread.GetContext();//get context    获取上下文
-                auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
-                m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
-                DATA_CONTEXT dataContext{};
-                memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-                threadData.fn = _Fx;
-                auto pFunction = &ThreadFunctionNoReturn<std::decay_t<_Fn>, RetType>;//get function address 获取函数地址
-                auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
-                auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
-                m_vecAllocMem.emplace_back(lpFunction);
-                _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
-                dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
-                dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
-                using parametertype = decltype(threadData);//get parameter type
-                auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
-                m_vecAllocMem.emplace_back(lpParameter);
-                _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory
-                dataContext.lpParameter = (PBYTE)lpParameter.raw();
-                _paramAddr = (uintptr_t)lpParameter.raw();
-                ctx.XIP = (uintptr_t)lpShell.raw();//set xip
-                _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory
-                thread.SetContext(ctx);//set context
-                thread.Resume();//resume thread
-                return EnumStatus::Break;
-                });
-            hEvent.Wait(INFINITE);//wait event
-            ClearMemory();
+            if (hEvent) {
+                threadData.pFunc[0] = (LPVOID)LoadLibraryA;
+                threadData.pFunc[1] = (LPVOID)GetProcAddress;
+                EnumThread([&](auto& te32)->EnumStatus {
+                    auto thread = Thread(te32);//construct thread   构造线程
+                    thread.Suspend();//suspend thread   暂停线程
+                    auto ctx = thread.GetContext();//get context    获取上下文
+                    auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
+                    m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
+                    DATA_CONTEXT dataContext{};
+                    memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
+                    threadData.fn = _Fx;
+                    auto pFunction = &ThreadFunctionNoReturn<std::decay_t<_Fn>, RetType>;//get function address 获取函数地址
+                    auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+                    auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
+                    m_vecAllocMem.emplace_back(lpFunction);
+                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
+                    dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
+                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
+                    using parametertype = decltype(threadData);//get parameter type
+                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
+                    m_vecAllocMem.emplace_back(lpParameter);
+                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory
+                    dataContext.lpParameter = (PBYTE)lpParameter.raw();
+                    _paramAddr = (uintptr_t)lpParameter.raw();
+                    ctx.XIP = (uintptr_t)lpShell.raw();//set xip
+                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory
+                    thread.SetContext(ctx);//set context
+                    thread.Resume();//resume thread
+                    return EnumStatus::Break;
+                    });
+                hEvent.Wait(INFINITE);//wait event
+                ClearMemory();
+            }
         }
         template<class _Fn, class ...Arg>
         INLINE void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
@@ -1291,44 +1295,45 @@ namespace stc{
             strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
             //创建事件
             GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-
-            //设置函数地址
-            threadData.pFunc[0] = (LPVOID)LoadLibraryA;
-            threadData.pFunc[1] = (LPVOID)GetProcAddress;
-            EnumThread([&](auto& te32)->EnumStatus {
-                auto thread = Thread(te32);//construct thread
-                thread.Suspend();//suspend thread
-                auto ctx = thread.GetContext();//get context
-                auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory
-                m_vecAllocMem.emplace_back(lpShell);//
-                DATA_CONTEXT dataContext{};
-                memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-                if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter
-                threadData.fn = _Fx;
-                threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters
-                auto pFunction = &ThreadFunction2NoReturn<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address
-                int length = GetFunctionSize((BYTE*)pFunction);//get function length
-                auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
-                m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory
-                _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function
-                dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
-                dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
-                using parametertype = decltype(threadData);
-                auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
-                m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory
-                _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter
-                dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address
-                _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address
-                ctx.XIP = (uintptr_t)lpShell.raw();//set xip
-                _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext
-                thread.SetContext(ctx);//set context
-                thread.Resume();//resume thread
-                return EnumStatus::Break;
-                });
-            hEvent.Wait(INFINITE);//wait event
-            if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
-            maptoorigin.clear();//clear map
-            ClearMemory();
+            if (hEvent) {
+                //设置函数地址
+                threadData.pFunc[0] = (LPVOID)LoadLibraryA;
+                threadData.pFunc[1] = (LPVOID)GetProcAddress;
+                EnumThread([&](auto& te32)->EnumStatus {
+                    auto thread = Thread(te32);//construct thread
+                    thread.Suspend();//suspend thread
+                    auto ctx = thread.GetContext();//get context
+                    auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory
+                    m_vecAllocMem.emplace_back(lpShell);//
+                    DATA_CONTEXT dataContext{};
+                    memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
+                    if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter
+                    threadData.fn = _Fx;
+                    threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters
+                    auto pFunction = &ThreadFunction2NoReturn<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address
+                    int length = GetFunctionSize((BYTE*)pFunction);//get function length
+                    auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
+                    m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory
+                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function
+                    dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
+                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
+                    using parametertype = decltype(threadData);
+                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
+                    m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory
+                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter
+                    dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address
+                    _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address
+                    ctx.XIP = (uintptr_t)lpShell.raw();//set xip
+                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext
+                    thread.SetContext(ctx);//set context
+                    thread.Resume();//resume thread
+                    return EnumStatus::Break;
+                    });
+                hEvent.Wait(INFINITE);//wait event
+                if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
+                maptoorigin.clear();//clear map
+                ClearMemory();
+            }
         }
         INLINE decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) NOEXCEPT {
             static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
