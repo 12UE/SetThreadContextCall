@@ -84,7 +84,7 @@ namespace stc{
         INLINE T* operator&()NOEXCEPT {
             return &m_handle;
         }
-        INLINE Traits* operator->()NOEXCEPT {
+        INLINE Traits* operator->()NOEXCEPT {//允许直接调用句柄的方法 allow to call handle's method directly
             return (Traits*)this;
         }
     };
