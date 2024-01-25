@@ -634,35 +634,36 @@ template<class T>struct has_type<T, T> { static constexpr bool value = true; }; 
 template<class T1, class ...Args>constexpr bool has_type_v = has_type<T1, Args...>::value;
 template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer  移除const指针
 template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer   移除const指针
-std::wstring to_wstring(const std::string& str) {
-    static std::unordered_map<std::string, int> lengthbuffer;
-    auto it = lengthbuffer.find(str);
-    int nLen = 0;
-    if (it == lengthbuffer.end()) {
-        nLen = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, NULL, 0);
-        lengthbuffer.insert(std::make_pair(str, nLen));
-    }else{
-        nLen = it->second;
-    }
-    if (nLen == 0) return L"";
-    wchar_t* pwszDst = new wchar_t[nLen];
-    if (!pwszDst) return L"";
-    static std::unordered_map<std::string, std::wstring> wstringbuffer;
-    auto it2 = wstringbuffer.find(str);
-    if(it2==wstringbuffer.end()){
-        MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, pwszDst, nLen);
-        wstringbuffer.insert(std::make_pair(str, std::wstring(pwszDst)));
-    }else{
-        memcpy(pwszDst, it2->second.c_str(), nLen * sizeof(wchar_t));
-    }
-    std::wstring wstr(pwszDst);
-    delete[] pwszDst;
-    return wstr;
-}
 template<class Tx, class Ty> INLINE bool _ucsicmp(const Tx * str1, const Ty * str2) NOEXCEPT {//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
     if (!str1 || !str2) throw std::exception("str1 or str2 is nullptr");
     std::wstring wstr1{}, wstr2{};
     std::string  strtemp{};
+    auto to_wstring = [](const std::string& str)->std::wstring {
+        static std::unordered_map<std::string, int> lengthbuffer;
+        auto it = lengthbuffer.find(str);
+        int nLen = 0;
+        if (it == lengthbuffer.end()) {
+            nLen = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, NULL, 0);
+            lengthbuffer.insert(std::make_pair(str, nLen));
+        }
+        else {
+            nLen = it->second;
+        }
+        if (nLen == 0) return L"";
+        std::unique_ptr<wchar_t[]> pwszDst(new wchar_t[nLen]);
+        if (!pwszDst) return L"";
+        static std::unordered_map<std::string, std::wstring> wstringbuffer;
+        auto it2 = wstringbuffer.find(str);
+        if (it2 == wstringbuffer.end()) {
+            MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, pwszDst.get(), nLen);
+            wstringbuffer.insert(std::make_pair(str, std::wstring(pwszDst.get())));
+        }
+        else {
+            memcpy(pwszDst.get(), it2->second.c_str(), nLen * sizeof(wchar_t));
+        }
+        std::wstring wstr(pwszDst.get());
+        return wstr;
+    };
     if constexpr (!std::is_same_v<remove_const_pointer_t<Tx>, wchar_t>){
         strtemp = str1;
         wstr1 = to_wstring(strtemp);
