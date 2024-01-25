@@ -84,6 +84,9 @@ namespace stc{
         INLINE T* operator&()NOEXCEPT {
             return &m_handle;
         }
+        INLINE Traits* operator->()NOEXCEPT {
+            return (Traits*)this;
+        }
     };
     template <typename T>
     std::string GetMapName() {//获取共享内存的名字 get shared memory name
