@@ -635,11 +635,26 @@ template<class T1, class ...Args>constexpr bool has_type_v = has_type<T1, Args..
 template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer  移除const指针
 template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer   移除const指针
 std::wstring to_wstring(const std::string& str) {
-    int nLen = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, NULL, 0);
+    static std::unordered_map<std::string, int> lengthbuffer;
+    auto it = lengthbuffer.find(str);
+    int nLen = 0;
+    if (it == lengthbuffer.end()) {
+        nLen = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, NULL, 0);
+        lengthbuffer.insert(std::make_pair(str, nLen));
+    }else{
+        nLen = it->second;
+    }
     if (nLen == 0) return L"";
     wchar_t* pwszDst = new wchar_t[nLen];
     if (!pwszDst) return L"";
-    MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, pwszDst, nLen);
+    static std::unordered_map<std::string, std::wstring> wstringbuffer;
+    auto it2 = wstringbuffer.find(str);
+    if(it2==wstringbuffer.end()){
+        MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, pwszDst, nLen);
+        wstringbuffer.insert(std::make_pair(str, std::wstring(pwszDst)));
+    }else{
+        memcpy(pwszDst, it2->second.c_str(), nLen * sizeof(wchar_t));
+    }
     std::wstring wstr(pwszDst);
     delete[] pwszDst;
     return wstr;
@@ -1070,7 +1085,7 @@ public:
     INLINE void Attach(const char* _szProcessName) NOEXCEPT {//attach process   附加进程
         //get process id    获取进程id
         auto pid = GetProcessIdByName(_szProcessName);
-        if (pid != 0){
+        if (pid){
             m_pid = pid;
             m_hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_pid);
             if(m_hProcess)m_bAttached = true;
@@ -1369,7 +1384,7 @@ private:
 int main(){
     auto& Process = Process::GetInstance();//get instance   获取实例
     Process.Attach("notepad.exe");//attach process  附加进程
-    std::cout << Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK).get();
+    Process.SetContextCallNoReturn(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK);
     return 0;
 }
 
