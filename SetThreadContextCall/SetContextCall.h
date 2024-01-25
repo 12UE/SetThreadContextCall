@@ -519,11 +519,13 @@ namespace stc{
         FreeBlock* m_head;
         GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;//HandleView 句柄视图,不负责关闭句柄 HandleView handle view,not responsible for closing handle
     };
-    INLINE void* mallocex(HANDLE hProcess, size_t size) {
-        return FreeBlockList::GetInstance(hProcess).mallocex(size);//调用单例模式的函数 call singleton function
+    INLINE void* mallocex(GenericHandle<HANDLE, HandleView<NormalHandle>> hProcess, size_t size) {
+        void* ptr = nullptr;
+        if(hProcess)ptr=FreeBlockList::GetInstance(hProcess).mallocex(size);//调用单例模式的函数 call singleton function
+        return ptr;
     }
-    INLINE void freeex(HANDLE hProcess, void* ptr) {
-        return FreeBlockList::GetInstance(hProcess).freeex(ptr);   //调用单例模式的函数 call singleton function
+    INLINE void freeex(GenericHandle<HANDLE, HandleView<NormalHandle>> hProcess, void* ptr) {
+        if(hProcess) FreeBlockList::GetInstance(hProcess).freeex(ptr);   //调用单例模式的函数 call singleton function
     }
     class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
         GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a HandleView,not responsible for closing process handle
@@ -533,10 +535,10 @@ namespace stc{
             refCount++;
         }
         INLINE uintptr_t _AllocMemApi(SIZE_T dwSize) NOEXCEPT {//远程分配内存 remote allocate memory
-            return (uintptr_t)mallocex(m_hProcess, dwSize);
+            return (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize);
         }
         INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//远程释放内存 remote free memory
-            freeex(m_hProcess, lpAddress);
+            freeex((HANDLE)m_hProcess, lpAddress);
             return true;
         }
     public:
