@@ -80,7 +80,7 @@ namespace stc{
         INLINE operator bool() NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
             return IsValid();
         }
-        //重载取地址
+        //重载取地址 overload get address of handle 
         INLINE T* operator&()NOEXCEPT {
             return &m_handle;
         }
