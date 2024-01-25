@@ -107,7 +107,7 @@ namespace stc{
                 UnmapViewOfFile(mapaddr);//解除映射 unmap view of file 但是还没有关闭映射对象 but not close map object
             }
         }
-        T* get() {
+        INLINE T* get() {
             return (T*)objaddr;
         }
     };
@@ -115,7 +115,7 @@ namespace stc{
     class InstanceManger {
     public:
         void* objaddr;//管理指针
-        static Instance<T> CreateInstance(InstanceManger* thisinstance) {
+        INLINE static Instance<T> CreateInstance(InstanceManger* thisinstance) {
             std::atomic_bool Owend = false;
             HANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
             if (!hFile) {
@@ -139,7 +139,7 @@ namespace stc{
             return ret;
         }
         template<class... Args>
-        static Instance<T> CreateInstance(InstanceManger* thisinstance, Args&&... args) {
+        INLINE static Instance<T> CreateInstance(InstanceManger* thisinstance, Args&&... args) {
             std::atomic_bool Owend = false;
             HANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
             if (!hFile) {
@@ -163,12 +163,12 @@ namespace stc{
         }
     };
     template<class T>
-    decltype(auto) SingleInstance() {
+    INLINE decltype(auto) SingleInstance()NOEXCEPT {
         InstanceManger<T> thisinstance;
         return InstanceManger<T>::CreateInstance(&thisinstance);
     }
     template<class T, class... Args>
-    decltype(auto) SingleInstance(Args&&... args) {
+    INLINE decltype(auto) SingleInstance(Args&&... args)NOEXCEPT {
         InstanceManger<T> thisinstance;
         return InstanceManger<T>::CreateInstance(&thisinstance, args...);
     }
@@ -188,13 +188,13 @@ namespace stc{
             Clear();
             RemoveHandle();
         }
-        void InsertObj(T* obj) {
+        INLINE void InsertObj(T* obj) {
             instances.emplace_back(obj);
         }
-        void InsertHandle(HANDLE handle) {
+        INLINE void InsertHandle(HANDLE handle) {
             handles.emplace_back(handle);
         }
-        void RemoveHandle() {
+        INLINE void RemoveHandle()NOEXCEPT {
             // 对向量进行排序
             std::sort(handles.begin(), handles.end());
 
@@ -205,7 +205,7 @@ namespace stc{
             handles.clear();
 
         }
-        void Clear() {
+        INLINE void Clear()NOEXCEPT {
             for (auto& it : instances)delete it;
             instances.clear();
         }
@@ -222,7 +222,7 @@ namespace stc{
             return objptr;
         }//创建一个类的实例 create a instance of class
         template <class... Args>
-        static INLINE T* CreateInstance(Args&& ...args) NOEXCEPT {
+        INLINE static INLINE T* CreateInstance(Args&& ...args) NOEXCEPT {
             auto obj = SingleInstance<T>(std::forward<Args>(args)...);
             auto objptr = obj.get();
             InstanceMangerBase<T>::GetInstance().InsertObj(objptr);
@@ -274,10 +274,10 @@ namespace stc{
         void* ptr;  //指针 pointer
         FreeBlock* next;//下一个块 next block 其实就是一个链表 actually is a linked list
     };
-    INLINE BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {//远程释放内存 remote free memory
+    INLINE BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) NOEXCEPT {//远程释放内存 remote free memory
         return VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);//系统的 VirtualFreeEx  system VirtualFreeEx
     }
-    INLINE LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
+    INLINE LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) NOEXCEPT {//最基础的远程释放内存函数 the most basic remote free memory function 分配的粒度为0x1000  allocate granularity is 0x1000
         return VirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);// 系统的 VirtualAllocEx  system VirtualAllocEx
     }
     constexpr DWORD CacheMinTTL = 128;
@@ -285,7 +285,7 @@ namespace stc{
     constexpr DWORD CacheMaxTTL = 4096;
     template<class T>
     struct RangeCmp {//仿函数
-        bool operator()(const std::pair<T, T>& p1, const std::pair<T, T>& p2) const {
+        INLINE bool operator()(const std::pair<T, T>& p1, const std::pair<T, T>& p2)const {
             if (p1.first >= p2.first) return false;
             return p1.second < p2.second;
         }
@@ -294,7 +294,7 @@ namespace stc{
         CRITICAL_SECTION g_cs;
     public:
         FastMutex() { InitializeCriticalSection(&g_cs); }
-        CRITICAL_SECTION& Get() { return g_cs; }
+        INLINE CRITICAL_SECTION& Get()NOEXCEPT { return g_cs; }
         ~FastMutex() { DeleteCriticalSection(&g_cs); }
     };
     FastMutex lock;
@@ -307,7 +307,7 @@ namespace stc{
         CacheItem(const _Tx& _value, const timepoint& _endtime) :m_endtime(_endtime), m_value(_value) {}
         CacheItem(const _Tx&& _value, const timepoint& _endtime) :m_value(std::move(_value)), m_endtime(_endtime) {}
         ~CacheItem() { m_value.~_Tx(); }
-        inline bool IsValid(timepoint now)noexcept { return now < m_endtime; }
+        INLINE bool IsValid(timepoint now)NOEXCEPT { return now < m_endtime; }
     };
     template<typename _Tx, typename _Ty, class Pr = RangeCmp<_Tx>>
     class SimpleRangeCache {
@@ -320,7 +320,7 @@ namespace stc{
         using iterator = typename std::decay_t<decltype(m_Cache)>::iterator;
         SimpleRangeCache() { srand((unsigned int)time(0)); }
         ~SimpleRangeCache()noexcept { Clear(); }
-        inline void AsyncAddCache(const keyType& _key, const _Ty& _value, DWORD _validtime) {
+        INLINE  void AsyncAddCache(const keyType& _key, const _Ty& _value, DWORD _validtime) NOEXCEPT {
             auto future = std::async(std::launch::async, [&]()->void {
                 auto nowTime = std::chrono::system_clock::now();
                 auto newValue = CacheItem<_Ty>(_value, nowTime + std::chrono::milliseconds(_validtime + rand() % 30));
@@ -342,7 +342,7 @@ namespace stc{
                 }
                 });
         }
-        inline std::pair<iterator, bool> find(const _Tx& value) {
+        INLINE  std::pair<iterator, bool> find(const _Tx& value)NOEXCEPT {
             keyType _key = keyType(value, value);
             if (m_Cache.empty()) return { iterator(),false };
             auto iter = m_Cache.find(_key);
@@ -351,10 +351,10 @@ namespace stc{
             LeaveCriticalSection(&lock.Get());
             return { iter, iter != m_Cache.end() && IsValidItem };
         }
-        inline std::pair<iterator, bool> operator[](_Tx&& value) {
+        INLINE  std::pair<iterator, bool> operator[](_Tx&& value)NOEXCEPT {
             return find(value);
         }
-        inline void erase(const _Tx& value) {//删除缓存
+        INLINE  void erase(const _Tx& value)NOEXCEPT {//删除缓存
             keyType& _key = keyType(value, value);
             if (m_Cache.empty()) return;
             auto iter = m_Cache.find(_key);
@@ -362,13 +362,13 @@ namespace stc{
             if (iter != m_Cache.end()) m_Cache.erase(iter);
             LeaveCriticalSection(&lock.Get());
         }
-        inline void Clear() {
+        INLINE  void Clear()NOEXCEPT {
             EnterCriticalSection(&lock.Get());
             m_Cache.clear();
             LeaveCriticalSection(&lock.Get());
         }
     };
-    constexpr inline bool CheckMask(const DWORD value, const DWORD mask) {//判断vakue和mask是否相等
+    constexpr INLINE  bool CheckMask(const DWORD value, const DWORD mask)NOEXCEPT {//判断vakue和mask是否相等
         return (mask && (value & mask)) && (value <= mask);
     }
     constexpr auto USERADDR_MIN = 0x10000;
@@ -380,7 +380,7 @@ namespace stc{
     uintptr_t maxAppAddr = USERADDR_MAX;
     uintptr_t minAppAddr = USERADDR_MIN;
     static SimpleRangeCache<uintptr_t, MEMORY_BASIC_INFORMATION> cache;
-    inline SIZE_T VirtualQueryCacheApi(HANDLE hProcess, LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) {
+    INLINE  SIZE_T VirtualQueryCacheApi(HANDLE hProcess, LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) NOEXCEPT {
         if ((uintptr_t)lpAddress > maxAppAddr) return 0;
 
         auto [result, isHit] = cache.find((uintptr_t)lpAddress);
@@ -400,7 +400,7 @@ namespace stc{
             return ret;
         }
     }
-    INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength) {
+    INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)NOEXCEPT {
 
         return VirtualQueryCacheApi(hProcess, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
     }
