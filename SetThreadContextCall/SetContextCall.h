@@ -1069,7 +1069,6 @@ namespace stc{
         INLINE ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
             if (m_bAttached) {
                 SIZE_T bytesWritten = 0;
-                std::cout<< "write address:" << lpBaseAddress << std::endl;
                 WriteProcessMemory(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
                 return bytesWritten;
             }
