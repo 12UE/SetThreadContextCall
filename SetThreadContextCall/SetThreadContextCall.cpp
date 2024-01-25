@@ -16,25 +16,6 @@
 #include <map>
 #define INLINE inline
 #define NOEXCEPT noexcept
-template<class T>
-class InitObj {
-public:
-    T obj;
-    InitObj() {
-        void* ptr = &obj;
-        DWORD size = sizeof(T);
-        memcpy(ptr, &size, sizeof(DWORD));
-    }
-    operator T() {
-        return obj;
-    }
-    T* operator->() {
-        return &obj;
-    }
-    T* operator&() {
-        return &obj;
-    }
-};
 #define PAGESIZE 0X1000
 #if defined _WIN64
 using UDWORD = DWORD64;
@@ -74,6 +55,7 @@ public:
     GenericHandle& operator =(const GenericHandle&) = delete;//禁止拷贝赋值函数 disable copy assignment
     INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {   //移动赋值 move assignment
         if (m_handle != other.m_handle) {
+            m_handle = other.m_handle;
             m_bOwner = other.m_bOwner;
             other.m_handle = Traits::InvalidHandle();
             other.m_bOwner = false;
@@ -150,14 +132,8 @@ public:
         if (!hFile) {
             throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));
         }
-        T* p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
-        uintptr_t objaddr = *(uintptr_t*)p;
-        if (Owend && objaddr == NULL) {
-            //申请内存
-            auto obj = new T();
-            //写入到objaddr
-            *(uintptr_t*)p = (uintptr_t)obj;
-        }
+        auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
+        if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T();
         Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);
         return ret;
     }
@@ -179,13 +155,8 @@ public:
         if (!hFile) {
             throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));
         }
-        T* p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
-        if (Owend && *(uintptr_t*)p == NULL) {
-            //申请内存
-            auto obj = new T(std::forward<Args>(args)...);
-            //写入到objaddr
-            *(uintptr_t*)p = (uintptr_t)obj;
-        }
+        auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
+        if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T(std::forward<Args>(args)...); 
         Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);
         return ret;
     }
@@ -354,14 +325,8 @@ public:
     using cache_item_type = _Ty;
     using pair_type = typename std::decay_t<decltype(m_Cache)>::value_type;
     using iterator = typename std::decay_t<decltype(m_Cache)>::iterator;
-    SimpleRangeCache() {
-        srand((unsigned int)time(0));
-    }
-    ~SimpleRangeCache()noexcept {
-        EnterCriticalSection(&lock.Get());
-        m_Cache.clear();
-        LeaveCriticalSection(&lock.Get());
-    }
+    SimpleRangeCache() {srand((unsigned int)time(0));}
+    ~SimpleRangeCache()noexcept {Clear();}
     inline void AsyncAddCache(const keyType& _key, const _Ty& _value, DWORD _validtime) {
         auto future=std::async(std::launch::async, [&]()->void {
             auto nowTime = std::chrono::system_clock::now();
@@ -405,7 +370,7 @@ public:
     }
     inline void Clear() {
         EnterCriticalSection(&lock.Get());
-        m_Cache.Clear();
+        m_Cache.clear();
         LeaveCriticalSection(&lock.Get());
     }
 };
@@ -421,15 +386,17 @@ constexpr auto USERADDR_MAX = 0xBFFE'FFFF;
 UDWORD maxAppAddr = USERADDR_MAX;
 UDWORD minAppAddr = USERADDR_MIN;
 static SimpleRangeCache<UDWORD, MEMORY_BASIC_INFORMATION> cache;
-inline SIZE_T VirtualQueryCacheApi(HANDLE hProcess,LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) {
+inline SIZE_T VirtualQueryCacheApi(GenericHandle<HANDLE, HandleView<NormalHandle>>& hProcess,LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) {
     if ((UDWORD)lpAddress > maxAppAddr) return 0;
+    
     auto [result, isHit] = cache.find((UDWORD)lpAddress);
     if (isHit) {
         if (lpMbi)*lpMbi = result->second.m_value;
         return sizeof(MEMORY_BASIC_INFORMATION);
     }
     else {
-        auto ret = VirtualQueryEx(hProcess,lpAddress, lpMbi, sizeof(MEMORY_BASIC_INFORMATION));
+        SIZE_T ret = 0;
+        if(hProcess) ret = VirtualQueryEx(hProcess,lpAddress, lpMbi, sizeof(MEMORY_BASIC_INFORMATION));
         if (ret > 0) {
             UDWORD start = (UDWORD)lpMbi->AllocationBase;
             UDWORD end = start + lpMbi->RegionSize, Ratio = 1;
@@ -439,8 +406,9 @@ inline SIZE_T VirtualQueryCacheApi(HANDLE hProcess,LPVOID lpAddress, MEMORY_BASI
         return ret;
     }
 }
-INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength) {//远程查询内存 remote query memory
-    return VirtualQueryCacheApi(hProcess, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
+INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength) {
+    GenericHandle<HANDLE, HandleView<NormalHandle>> h = hProcess;
+    return VirtualQueryCacheApi(h, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
 }
 //空闲块链表 free block list
 class FreeBlockList:public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
@@ -478,8 +446,7 @@ public:
                     newBlock->size = block->size - size;
                     newBlock->next = block->next;
                     *p = newBlock;
-                }
-                else {
+                }else {
                     // 否则，我们只需删除这个块 delete this block
                     *p = block->next;
                 }
@@ -675,7 +642,6 @@ template<class T1, class ...Args>constexpr bool has_type_v = has_type<T1, Args..
 template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer  移除const指针
 template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer   移除const指针
 std::wstring to_wstring(const std::string& str) {
-   //windowsapi 转换 windowsapi transform
     int nLen = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, NULL, 0);
     if (nLen == 0) return L"";
     wchar_t* pwszDst = new wchar_t[nLen];
@@ -901,9 +867,7 @@ public:
     }
     ~Thread() NOEXCEPT {}
     HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }//获取线程句柄  get thread handle
-    operator bool(){
-        return IsRunning();
-    }
+    operator bool(){return IsRunning();}
     bool IsRunning() NOEXCEPT {
         //获取线程退出代码  get thread exit code
         if (m_bAttached) {
@@ -912,19 +876,6 @@ public:
                 if (dwExitCode == STILL_ACTIVE) {
                     return true;
                 }
-            }
-        }
-        return false;
-    }
-    bool IsBlock() {
-        //等待 wait 如果线程处于死锁状态，那么WaitForSingleObject会返回WAIT_TIMEOUT  if thread is in deadlock state,WaitForSingleObject will return WAIT_TIMEOUT
-        if (m_bAttached) {
-            DWORD dwRet = m_GenericHandleThread.Wait(0);
-            if (dwRet == WAIT_TIMEOUT) {
-                return false;
-            }
-            else if (dwRet == WAIT_OBJECT_0) {
-                return true;
             }
         }
         return false;
@@ -954,25 +905,6 @@ public:
     void Resume() NOEXCEPT {
         if (m_bAttached) {
             ResumeThread(GetHandle());
-        }
-    }
-    //PostThreadMessage  向线程发送消息  send message to thread
-    BOOL _PostThreadMessage(UINT Msg, WPARAM wParam, LPARAM lParam) NOEXCEPT {//向线程发送消息  send message to thread
-        BOOL bRet = FALSE;
-        if (m_bAttached) {
-            bRet=::PostThreadMessageA(m_dwThreadId, Msg, wParam, lParam);
-        }
-        return bRet;
-    }
-    void QueApc(void* Addr) NOEXCEPT {//往线程中注入APC inject APC to thread
-        if (m_bAttached) {
-            QueueUserAPC((PAPCFUNC)Addr, GetHandle(), 0);
-        }
-    }
-    //设置线程优先级  set thread priority 竟然还会触发APC的强制执行  it will trigger APC to execute forcibly
-    void SetPriority(int nPriority = THREAD_PRIORITY_HIGHEST) NOEXCEPT {
-        if (m_bAttached) {
-            SetThreadPriority(GetHandle(), nPriority);
         }
     }
 };
@@ -1047,32 +979,9 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         m_vector.resize(size);
     }
-    INLINE void assign(size_t size, const T& value) NOEXCEPT {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_vector.assign(size, value);
-    }
-    INLINE void assign(std::initializer_list<T> list) NOEXCEPT {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_vector.assign(list);
-    }
-    //迭代器assign  iterator assign
-    template<class InputIt>
-    INLINE void assign(InputIt first, InputIt last) NOEXCEPT {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_vector.assign(first, last);
-    }
     INLINE bool empty() const{
         return m_vector.empty();
     }
-    INLINE void safe_erase(typename std::vector<T>::iterator it) NOEXCEPT {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_vector.erase(it);
-    }
-    //不安全的删除  unsafe erase
-    INLINE void erase(typename std::vector<T>::iterator it) NOEXCEPT {
-        m_vector.erase(it);
-    }
-    //unsafe
     INLINE decltype(auto)  begin()const {
         return m_vector.begin();
     }
@@ -1083,22 +992,6 @@ public:
         return m_vector.end();
     }
     INLINE decltype(auto)  end() NOEXCEPT {
-        return m_vector.end();
-    }
-    //crbegin
-    INLINE decltype(auto) crbegin() NOEXCEPT {
-        return m_vector.crbegin();
-    }
-    INLINE decltype(auto) crend() NOEXCEPT {
-        return m_vector.crend();
-    }
-    INLINE void unsafe_erase(typename std::vector<T>::iterator it) NOEXCEPT {
-        m_vector.erase(it);
-    }
-    INLINE decltype(auto) cbegin() const {
-        return m_vector.begin();
-    }
-    INLINE decltype(auto) cend() const {
         return m_vector.end();
     }
 };
@@ -1216,9 +1109,9 @@ public:
         if (m_bAttached){
             GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (hSnapshot){
-                InitObj<THREADENTRY32> threadEntry{};
+                THREADENTRY32 threadEntry{sizeof(THREADENTRY32),};
                 for (auto bRet = Thread32First(hSnapshot, &threadEntry); bRet; bRet = Thread32Next(hSnapshot, &threadEntry)) {
-                    if (threadEntry->th32OwnerProcessID == m_pid) {
+                    if (threadEntry.th32OwnerProcessID == m_pid) {
                         Thread thread(threadEntry);
                         if (thread&& pre(threadEntry) == EnumStatus::Break)break;
                     }
@@ -1234,8 +1127,6 @@ public:
     decltype(auto) SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
         using RetType = std::common_type<decltype(_Fx(args...))>::type;//return type is common type or not
         if (!m_bAttached) return RetType();
-        Thread _thread{};
-        CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
         ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
         strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
@@ -1272,12 +1163,10 @@ public:
             _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
             dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
             _paramAddr = (UDWORD)lpParameter.raw();//set parameter address  设置参数地址
-            _ctx = ctx;//save context   保存上下文
             ctx.XIP = (UDWORD)lpShell.raw();//set xip   设置xip
             _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写入datacontext
             thread.SetContext(ctx);//set context    设置上下文
             thread.Resume();//resume thread   恢复线程
-            _thread = std::move(thread);//move thread   移动线程
             return EnumStatus::Break;
             });
         hEvent.Wait(INFINITE);//wait event
@@ -1290,8 +1179,6 @@ public:
     INLINE decltype(auto) SetContextCallImpl(_Fn&& _Fx) NOEXCEPT {
         using RetType = std::common_type<decltype(_Fx())>::type;//return type is common type or not 返回类型是常见类型还是不是
         if (!m_bAttached) return RetType();//return default value   返回默认值
-        Thread _thread{};
-        CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
         ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data
         strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
@@ -1329,12 +1216,10 @@ public:
             _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory    写入参数到内存
             dataContext.lpParameter = (PBYTE)lpParameter.raw();
             _paramAddr = (UDWORD)lpParameter.raw();
-            _ctx = ctx;//store context  保存上下文
             ctx.XIP = (UDWORD)lpShell.raw();//set xip   设置xip
             _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory  写入datacontext到内存
             thread.SetContext(ctx);//set context    设置上下文
             thread.Resume();//resume thread  恢复线程
-            _thread = std::move(thread);//store thread  存储线程
             return EnumStatus::Break;
         });
         hEvent.Wait(INFINITE);//wait event
@@ -1352,8 +1237,6 @@ public:
     template <class _Fn>
     INLINE void SetContextCallNoReturnImpl(_Fn&& _Fx) NOEXCEPT {
         using RetType = void;
-        Thread _thread{};
-        CONTEXT _ctx{};
         UDWORD _paramAddr = 0;
         ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data
         strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
@@ -1391,23 +1274,20 @@ public:
             _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory
             dataContext.lpParameter = (PBYTE)lpParameter.raw();
             _paramAddr = (UDWORD)lpParameter.raw();
-            _ctx = ctx;//store context
             ctx.XIP = (UDWORD)lpShell.raw();//set xip
             _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory
             thread.SetContext(ctx);//set context
             thread.Resume();//resume thread
-            _thread = std::move(thread);//store thread
             return EnumStatus::Break;
             });
         hEvent.Wait(INFINITE);//wait event
+        ClearMemory();
     }
     template<class _Fn, class ...Arg>
     INLINE void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
         using RetType = void;
         if (!m_bAttached) return RetType();
-        Thread _thread{};
         UDWORD _paramAddr = 0;
-        CONTEXT _ctx{};
         ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
         strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
         strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
@@ -1446,17 +1326,16 @@ public:
             _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter
             dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address
             _paramAddr = (UDWORD)lpParameter.raw();//set parameter address
-            _ctx = ctx;//save context
             ctx.XIP = (UDWORD)lpShell.raw();//set xip
             _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext
             thread.SetContext(ctx);//set context
             thread.Resume();//resume thread
-            _thread = std::move(thread);//move thread
             return EnumStatus::Break;
         });
         hEvent.Wait(INFINITE);//wait event
         if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
         maptoorigin.clear();//clear map
+        ClearMemory();
     }
     INLINE decltype(auto) SetContextCall(auto&& _Fx, auto&& ...args) NOEXCEPT {
         static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
@@ -1479,12 +1358,12 @@ private:
         GenericHandle<HANDLE,NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (hSnapshot){
             //PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
-            InitObj<PROCESSENTRY32W> processEntry{};
+            PROCESSENTRY32W processEntry{sizeof(PROCESSENTRY32W),};
             //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name is processName
             for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)){
                 //比较进程名 compare process name 不区分大小写不区分char*和wchar_t* case insensitive for char* and wchar_t*
-                if (_ucsicmp(processEntry->szExeFile, processName) == 0){
-                    pid = processEntry->th32ProcessID;
+                if (_ucsicmp(processEntry.szExeFile, processName) == 0){
+                    pid = processEntry.th32ProcessID;
                     break;
                 }
             }
