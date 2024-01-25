@@ -15,6 +15,7 @@
 #include <chrono>
 #include <mutex>
 #include <map>
+#include <deque>
 namespace stc{
     #define INLINE inline
     #define NOEXCEPT noexcept
@@ -272,10 +273,12 @@ namespace stc{
         OutputDebugStringA(ss.str().c_str());
     }
     class FreeBlock {//空闲块 free block
+
     public:
+        FreeBlock()= default;
+        FreeBlock(void* _ptr,size_t _size) :size(_size), ptr(_ptr) {}
         size_t size;//大小 size
         void* ptr;  //指针 pointer
-        FreeBlock* next;//下一个块 next block 其实就是一个链表 actually is a linked list
     };
     INLINE BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) NOEXCEPT {//远程释放内存 remote free memory
         return VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);//系统的 VirtualFreeEx  system VirtualFreeEx
@@ -409,101 +412,61 @@ namespace stc{
     }
     //空闲块链表 free block list
     class FreeBlockList :public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
+        std::deque<FreeBlock> m_freeBlocks;
+        std::mutex m_mutex;
     public:
         FreeBlockList(HANDLE hprocess = GetCurrentProcess()) : m_head(nullptr) {
             m_hProcess = hprocess;
         }
         ~FreeBlockList() {//当析构时释放所有空闲块 free all free block when destruct
-            auto block = m_head;
-            while (block) {
-                auto next = block->next;
-                if (m_hProcess)VirtualFreeExApi(m_hProcess, block->ptr, block->size, MEM_RELEASE);
-                delete block;
-                block = next;
-            }
-            g_allocMap.clear();
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_freeBlocks.clear();
         }
         INLINE void Add(void* ptr, size_t size) NOEXCEPT {//加入一个空闲块 add a free block
-            auto block = new FreeBlock();
-            block->ptr = ptr;
-            block->size = size;
-            block->next = m_head;
-            m_head = block;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_freeBlocks.push_back({ ptr,size });
         }
         INLINE void* Get(size_t size)NOEXCEPT {//获得一个空闲块 get a free block
             if (size <= 0) return nullptr;
-            auto p = &m_head;
-            while (*p) {
-                if ((*p)->size >= size) {
-                    auto block = *p;
-                    if (block->size > size) {
-                        // 如果块的大小大于请求的大小，那么我们需要分割这个块 if block size is greater than requested size, we need to split this block
-                        auto newBlock = new FreeBlock();
-                        newBlock->ptr = (char*)block->ptr + size;
-                        newBlock->size = block->size - size;
-                        newBlock->next = block->next;
-                        *p = newBlock;
-                    }
-                    else {
-                        // 否则，我们只需删除这个块 delete this block
-                        *p = block->next;
-                    }
-                    return block->ptr;
-                }
-                p = &(*p)->next;
+            auto iter=std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](FreeBlock block) {return block.size >= size; });
+            if(iter==m_freeBlocks.end()){
+                //空闲链表当中没有
+                //没有找到合适的空闲块,那么就分配一个新的内存块
+                void* ptr = nullptr;
+                if (m_hProcess)ptr = VirtualAllocExApi(m_hProcess, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                Add(ptr, PAGESIZE);
+                return Get(size);//递归调用 get recursively call
+            }else{
+                //空闲链表当中有
+                auto &block = *iter;
+                //空闲链表当中的块减去size
+                block.size -= size;
+                auto ptr = (void*)(((uintptr_t)block.ptr) + block.size);
+                if (block.size == 0)m_freeBlocks.erase(iter);
+                return ptr;
             }
-            // 如果没有找到足够大的块，那么我们需要向系统申请更多的内存 get more memory from system if not found enough memory
-            auto allocSize = (size > PAGESIZE) ? size : PAGESIZE;
-            LPVOID ptr = NULL;
-            if (m_hProcess)ptr = VirtualAllocExApi(m_hProcess, nullptr, allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);//调用系统的api分配内存 call system api to allocate memory
-            if (ptr == nullptr) {
-                std::cerr << "VirtualAlloc failed." << std::endl;
-                return nullptr;
-            }
-            Add(ptr, allocSize);//加入到空闲块链表 add to free block list
-            return Get(size);  // 重新尝试获取内存 get memory again
+            
         }
         INLINE void Free(void* ptr, size_t size)NOEXCEPT {
             //查allocatebase
             MEMORY_BASIC_INFORMATION mbi{};
             VirtualQueryExApi(m_hProcess, ptr, &mbi, sizeof(mbi));
-            //合并到空闲链表当中allcatebase相同的块
-            auto p = &m_head;
-            while (*p) {
-                auto allocatebase = mbi.AllocationBase;
-                if ((*p)->ptr == allocatebase) {
-                    //合并size到块内
-                    auto block = *p;
-                    block->size += size;//合并size到块内
-                    break;
-                }
-                p = &(*p)->next;//下一个块 next block
+            //查询空闲列表中有没有和allcatebase相同的块
+            std::lock_guard<std::mutex> lock(m_mutex);
+            auto iter = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](FreeBlock block) {return block.ptr == mbi.AllocationBase; });
+            if (iter != m_freeBlocks.end()) {
+                //如果有,那么就把这个块的大小加上size
+                (*iter).size += size;
             }
-            //释放内存 free memory  
-            //遍历空闲链表，如果有相邻的块，那么合并这两个块    traverse free block list,if there is adjacent block,then merge these two block
-            p = &m_head;
-            while (*p) {
-                auto block = *p;
-                auto next = block->next;
-                if (next && (char*)block->ptr + block->size == next->ptr) {
-                    block->size += next->size;
-                    block->next = next->next;
-                    delete next;
-                    continue;
-                }
-                p = &(*p)->next;
-            }
-            //如果空闲块的大小大于PAGESIZE，那么释放内存    if free block size is greater than PAGESIZE,then free memory
-            p = &m_head;
-            while (*p) {
-                auto block = *p;
-                auto next = block->next;
-                if (block->size > PAGESIZE) {
-                    if (m_hProcess)VirtualFreeExApi(m_hProcess, block->ptr, block->size, MEM_DECOMMIT);
-                    *p = next;
-                    delete block;
-                }
-                p = &(*p)->next;
+            //查找当前有没有块大PAGE_SIZE
+            auto iter2 = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](FreeBlock block) {return block.size > PAGESIZE; });
+            //有就释放这个块
+            if (iter2 != m_freeBlocks.end()) {
+                auto& block = *iter2;
+                //释放内存 free memory
+                if(m_hProcess)VirtualFreeExApi(m_hProcess, block.ptr, block.size, MEM_DECOMMIT);
+                //释放内存 free memory
+                m_freeBlocks.erase(iter2);
             }
         }
         INLINE void* mallocex(size_t size)NOEXCEPT {
@@ -1106,6 +1069,7 @@ namespace stc{
         INLINE ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
             if (m_bAttached) {
                 SIZE_T bytesWritten = 0;
+                std::cout<< "write address:" << lpBaseAddress << std::endl;
                 WriteProcessMemory(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
                 return bytesWritten;
             }
