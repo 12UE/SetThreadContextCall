@@ -147,6 +147,9 @@
     </ClCompile>
     <ClCompile Include="SetThreadContextCall.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="SetContextCall.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
