@@ -86,7 +86,7 @@ public:
     }
 };
 template <typename T>
-std::string GetMapName() {
+std::string GetMapName() {//获取共享内存的名字 get shared memory name
     DWORD pid = GetCurrentProcessId();
     std::string pidstr = std::to_string(pid);
     std::string name = typeid(T).name();
@@ -94,7 +94,7 @@ std::string GetMapName() {
     return ret;
 }
 template<class T>
-class Instance {
+class Instance {//共享内存的实例 shared memory instance
     uintptr_t objaddr;
     LPVOID mapaddr;
     bool isOwend = false;
@@ -104,7 +104,7 @@ public:
     }
     ~Instance() {
         if (isOwend) {
-            UnmapViewOfFile(mapaddr);
+            UnmapViewOfFile(mapaddr);//解除映射 unmap view of file 但是还没有关闭映射对象 but not close map object
         }
     }
     T* get() {
@@ -126,15 +126,16 @@ public:
                 PAGE_READWRITE,       // 读写权限
                 0,                    // 最大对象大小（高位）
                 sizeof(T),            // 最大对象大小（低位）
-                GetMapName<T>().c_str()); // 映射对象的名字
+                GetMapName<T>().c_str()); // 映射对象的名字// 映射对象的名字 map object name
             Owend = true;
         }
         if (!hFile) {
             throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));
         }
-        auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
-        if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T();
-        Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);
+        //这里既关闭映射对象又关闭文件句柄 close map object and file handle 因为映射对象一旦关闭,那么映射到内存的对象也会被释放 because once map object is closed,the object map to memory will be released
+        auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));//映射到内存 map to memory 
+        if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T();//如果是第一次创建,那么初始化对象 if first create,then initialize object
+        Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);//映射对象交给Instance管理 map object is managed by Instance
         return ret;
     }
     template<class... Args>
@@ -177,13 +178,13 @@ decltype(auto) SingleInstance(Args&&... args) {
 template<class T>
 class InstanceMangerBase {
 public:
-    std::vector<T*> instances;
-    std::vector<HANDLE> handles;
-    static InstanceMangerBase& GetInstance() {
+    std::vector<T*> instances;//映射的指针 map pointer
+    std::vector<HANDLE> handles;//句柄 handle
+    static InstanceMangerBase& GetInstance() {//本身是代码层面的单例模式,方便后期调用 singleton mode is convenient for later call
         static InstanceMangerBase instance;
         return instance;
     }
-    ~InstanceMangerBase() {
+    ~InstanceMangerBase() {//当析构时释放所有句柄和对象 free all handle and object when destruct
         Clear();
         RemoveHandle();
     }
@@ -192,14 +193,6 @@ public:
     }
     void InsertHandle(HANDLE handle) {
         handles.emplace_back(handle);
-    }
-    void Remove(T* obj) {
-        for (auto it = instances.begin(); it != instances.end(); ++it) {
-            if (*it == obj) {
-                instances.erase(it);
-                break;
-            }
-        }
     }
     void RemoveHandle() {
         // 对向量进行排序
@@ -224,8 +217,8 @@ private:
         static INLINE T* CreateInstance() NOEXCEPT {
         auto obj = SingleInstance<T>();
         auto objptr = obj.get();
-        InstanceMangerBase<T>::GetInstance().InsertObj(objptr);
-        InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);
+        InstanceMangerBase<T>::GetInstance().InsertObj(objptr);//获得映射对象的指针 get map object pointer
+        InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);//获得映射对象的句柄 get map object handle
         return objptr;
     }//创建一个类的实例 create a instance of class
     template <class... Args>
@@ -1145,8 +1138,7 @@ public:
         strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件  create event
         GenericHandle<HANDLE,NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-        //设置函数地址  set function address
-        threadData.pFunc[0] = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
+        threadData.pFunc[0] = (LPVOID)LoadLibraryA;
         threadData.pFunc[1] = (LPVOID)GetProcAddress;
         EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread   构造线程
@@ -1197,12 +1189,8 @@ public:
         strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件  create event
         GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-        //获取地址  get address
-        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
-        auto pGetProcAddress = (LPVOID)GetProcAddress;
-        //设置函数地址  set function address
-        threadData.pFunc[0] = (LPVOID)pLoadLibrary;
-        threadData.pFunc[1] = (LPVOID)pGetProcAddress;
+        threadData.pFunc[0] = (LPVOID)LoadLibraryA;
+        threadData.pFunc[1] = (LPVOID)GetProcAddress;
         EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
@@ -1256,12 +1244,8 @@ public:
         strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件  create event
         GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-        //获取地址  get address
-        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
-        auto pGetProcAddress = (LPVOID)GetProcAddress;
-        //设置函数地址  set function address
-        threadData.pFunc[0] = (LPVOID)pLoadLibrary;
-        threadData.pFunc[1] = (LPVOID)pGetProcAddress;
+        threadData.pFunc[0] = (LPVOID)LoadLibraryA;
+        threadData.pFunc[1] = (LPVOID)GetProcAddress;
         EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread   构造线程
             thread.Suspend();//suspend thread   暂停线程
@@ -1307,12 +1291,10 @@ public:
         strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
         //创建事件
         GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-        //获取地址
-        auto pLoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA(threadData.funcname[0]), "LoadLibraryA");
-        auto pGetProcAddress = (LPVOID)GetProcAddress;
+
         //设置函数地址
-        threadData.pFunc[0] = (LPVOID)pLoadLibrary;
-        threadData.pFunc[1] = (LPVOID)pGetProcAddress;
+        threadData.pFunc[0] = (LPVOID)LoadLibraryA;
+        threadData.pFunc[1] = (LPVOID)GetProcAddress;
         EnumThread([&](auto& te32)->EnumStatus {
             auto thread = Thread(te32);//construct thread
             thread.Suspend();//suspend thread
@@ -1382,10 +1364,30 @@ private:
         return pid;
     }
 };
+template<class _PRE>
+float Test_Speed(int Times, _PRE bin) {
+    DWORD time1 = clock();
+    float count = 0;
+    while (count < Times) {
+        bin();
+        count++;
+    }
+    float elpstime = clock() - (float)time1;
+    auto total = count / (elpstime / 1000.0f);
+    printf("Speed: %0.0f/s\r\n", total);
+    while (true)
+    {
+
+    }
+    return total;
+}
 int main(){
     auto& Process = Process::GetInstance();//get instance   获取实例
     Process.Attach("notepad.exe");//attach process  附加进程
-    Process.SetContextCallNoReturn(MessageBoxA, Process::TONULL<HWND>(), "MSG", "CAP", MB_OK);
+    Test_Speed(1e+2, [&]() {
+        Process.SetContextCallNoReturn(MessageBoxA,Process::TONULL<HWND>(),"cap","msg",MB_OK);
+    });
+    
     return 0;
 }
 
