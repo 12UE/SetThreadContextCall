@@ -386,7 +386,7 @@ constexpr auto USERADDR_MAX = 0xBFFE'FFFF;
 UDWORD maxAppAddr = USERADDR_MAX;
 UDWORD minAppAddr = USERADDR_MIN;
 static SimpleRangeCache<UDWORD, MEMORY_BASIC_INFORMATION> cache;
-inline SIZE_T VirtualQueryCacheApi(GenericHandle<HANDLE, HandleView<NormalHandle>>& hProcess,LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) {
+inline SIZE_T VirtualQueryCacheApi(HANDLE hProcess,LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) {
     if ((UDWORD)lpAddress > maxAppAddr) return 0;
     
     auto [result, isHit] = cache.find((UDWORD)lpAddress);
@@ -396,7 +396,7 @@ inline SIZE_T VirtualQueryCacheApi(GenericHandle<HANDLE, HandleView<NormalHandle
     }
     else {
         SIZE_T ret = 0;
-        if(hProcess) ret = VirtualQueryEx(hProcess,lpAddress, lpMbi, sizeof(MEMORY_BASIC_INFORMATION));
+        if(hProcess&& hProcess!=INVALID_HANDLE_VALUE) ret = VirtualQueryEx(hProcess,lpAddress, lpMbi, sizeof(MEMORY_BASIC_INFORMATION));
         if (ret > 0) {
             UDWORD start = (UDWORD)lpMbi->AllocationBase;
             UDWORD end = start + lpMbi->RegionSize, Ratio = 1;
@@ -407,8 +407,8 @@ inline SIZE_T VirtualQueryCacheApi(GenericHandle<HANDLE, HandleView<NormalHandle
     }
 }
 INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength) {
-    GenericHandle<HANDLE, HandleView<NormalHandle>> h = hProcess;
-    return VirtualQueryCacheApi(h, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
+
+    return VirtualQueryCacheApi(hProcess, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
 }
 //空闲块链表 free block list
 class FreeBlockList:public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
@@ -1229,6 +1229,7 @@ public:
     };
     template <class _Fn>
     INLINE void SetContextCallNoReturnImpl(_Fn&& _Fx) NOEXCEPT {
+        static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
         using RetType = void;
         UDWORD _paramAddr = 0;
         ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data
@@ -1278,6 +1279,7 @@ public:
     }
     template<class _Fn, class ...Arg>
     INLINE void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
+        static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
         using RetType = void;
         if (!m_bAttached) return RetType();
         UDWORD _paramAddr = 0;
@@ -1355,7 +1357,7 @@ private:
             //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name is processName
             for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)){
                 //比较进程名 compare process name 不区分大小写不区分char*和wchar_t* case insensitive for char* and wchar_t*
-                if (_ucsicmp(processEntry.szExeFile, processName) == 0){
+                if (_ucsicmp(processEntry.szExeFile, processName)){
                     pid = processEntry.th32ProcessID;
                     break;
                 }
