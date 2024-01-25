@@ -119,13 +119,13 @@ namespace stc{
             std::atomic_bool Owend = false;
             HANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
             if (!hFile) {
-                // 创建文件映射
+                // 创建文件映射 Create file mapping
                 hFile = CreateFileMappingA(
-                    INVALID_HANDLE_VALUE, // 使用系统分页文件
-                    NULL,                 // 默认安全属性
-                    PAGE_READWRITE,       // 读写权限
-                    0,                    // 最大对象大小（高位）
-                    sizeof(T),            // 最大对象大小（低位）
+                    INVALID_HANDLE_VALUE, // 使用系统分页文件 use system paging file
+                    NULL,                 // 默认安全属性   default security attributes
+                    PAGE_READWRITE,       // 读写权限   read/write access
+                    0,                    // 最大对象大小（高位）   maximum object size (high-order DWORD)
+                    sizeof(T),            // 最大对象大小（低位）   maximum object size (low-order DWORD)
                     GetMapName<T>().c_str()); // 映射对象的名字// 映射对象的名字 map object name
                 Owend = true;
             }
@@ -143,14 +143,14 @@ namespace stc{
             std::atomic_bool Owend = false;
             HANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
             if (!hFile) {
-                // 创建文件映射
+                // 创建文件映射 Create file mapping
                 hFile = CreateFileMappingA(
-                    INVALID_HANDLE_VALUE, // 使用系统分页文件
-                    NULL,                 // 默认安全属性
-                    PAGE_READWRITE,       // 读写权限
-                    0,                    // 最大对象大小（高位）
-                    sizeof(T),            // 最大对象大小（低位）
-                    GetMapName<T>().c_str()); // 映射对象的名字
+                    INVALID_HANDLE_VALUE, // 使用系统分页文件   use system paging file
+                    NULL,                 // 默认安全属性   default security attributes
+                    PAGE_READWRITE,       // 读写权限   read/write access
+                    0,                    // 最大对象大小（高位）   maximum object size (high-order DWORD)
+                    sizeof(T),            // 最大对象大小（低位）   maximum object size (low-order DWORD)
+                    GetMapName<T>().c_str()); // 映射对象的名字 map object name
                 Owend = true;
             }
             if (!hFile) {
@@ -195,12 +195,12 @@ namespace stc{
             handles.emplace_back(handle);
         }
         INLINE void RemoveHandle()NOEXCEPT {
-            // 对向量进行排序
+            // 对向量进行排序   sort vector
             std::sort(handles.begin(), handles.end());
 
-            // 使用 std::unique 移除相邻的重复元素
+            // 使用 std::unique 移除相邻的重复元素  use std::unique to remove adjacent duplicate elements
             handles.erase(std::unique(handles.begin(), handles.end()), handles.end());
-            //关闭句柄
+            //关闭句柄  close handle
             for (auto& it : handles)CloseHandle(it);
             handles.clear();
 
@@ -263,7 +263,7 @@ namespace stc{
     //debugoutput
     template<class T>
     void DebugOutput(const T& t) {
-        //转为字符串
+        //转为字符串    convert to string
         std::stringstream ss;
         ss << t;
         OutputDebugStringA(ss.str().c_str());
@@ -284,7 +284,7 @@ namespace stc{
     constexpr DWORD CacheNormalTTL = 200;
     constexpr DWORD CacheMaxTTL = 4096;
     template<class T>
-    struct RangeCmp {//仿函数
+    struct RangeCmp {//仿函数   functor
         INLINE bool operator()(const std::pair<T, T>& p1, const std::pair<T, T>& p2)const {
             if (p1.first >= p2.first) return false;
             return p1.second < p2.second;
@@ -354,7 +354,7 @@ namespace stc{
         INLINE  std::pair<iterator, bool> operator[](_Tx&& value)NOEXCEPT {
             return find(value);
         }
-        INLINE  void erase(const _Tx& value)NOEXCEPT {//删除缓存
+        INLINE  void erase(const _Tx& value)NOEXCEPT {//删除缓存    delete cache
             keyType& _key = keyType(value, value);
             if (m_Cache.empty()) return;
             auto iter = m_Cache.find(_key);
@@ -368,7 +368,7 @@ namespace stc{
             LeaveCriticalSection(&lock.Get());
         }
     };
-    constexpr INLINE  bool CheckMask(const DWORD value, const DWORD mask)NOEXCEPT {//判断vakue和mask是否相等
+    constexpr INLINE  bool CheckMask(const DWORD value, const DWORD mask)NOEXCEPT {//判断vakue和mask是否相等    judge whether value and mask is equal
         return (mask && (value & mask)) && (value <= mask);
     }
     constexpr auto USERADDR_MIN = 0x10000;
@@ -476,8 +476,8 @@ namespace stc{
                 }
                 p = &(*p)->next;//下一个块 next block
             }
-            //释放内存 free memory
-            //遍历空闲链表，如果有相邻的块，那么合并这两个块
+            //释放内存 free memory  
+            //遍历空闲链表，如果有相邻的块，那么合并这两个块    traverse free block list,if there is adjacent block,then merge these two block
             p = &m_head;
             while (*p) {
                 auto block = *p;
@@ -490,7 +490,7 @@ namespace stc{
                 }
                 p = &(*p)->next;
             }
-            //如果空闲块的大小大于PAGESIZE，那么释放内存
+            //如果空闲块的大小大于PAGESIZE，那么释放内存    if free block size is greater than PAGESIZE,then free memory
             p = &m_head;
             while (*p) {
                 auto block = *p;
@@ -517,7 +517,7 @@ namespace stc{
     private:
         std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
         FreeBlock* m_head;
-        GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;//HandleView
+        GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;//HandleView 句柄视图,不负责关闭句柄 HandleView handle view,not responsible for closing handle
     };
     INLINE void* mallocex(HANDLE hProcess, size_t size) {
         return FreeBlockList::GetInstance(hProcess).mallocex(size);//调用单例模式的函数 call singleton function
@@ -944,7 +944,7 @@ namespace stc{
             std::lock_guard<std::mutex> lock(m_mutex);
             m_vector.push_back(std::move(value));
         }
-        //emplace back
+        //emplace back  直接在vector中构造对象 construct object in vector directly
         template<class... Args>
         INLINE void emplace_back(Args&&... args) NOEXCEPT {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -958,7 +958,7 @@ namespace stc{
             std::lock_guard<std::mutex> lock(m_mutex);
             m_vector.clear();
         }
-        //data
+        //data  直接返回vector的data return vector data directly
         INLINE decltype(auto) data() NOEXCEPT {
             std::lock_guard<std::mutex> lock(m_mutex);
             return m_vector.data();
