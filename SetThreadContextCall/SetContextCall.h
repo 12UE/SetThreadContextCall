@@ -177,9 +177,9 @@ namespace stc{
     #define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&) = delete; TYPE(TYPE&&) = delete; void operator= (const TYPE&) = delete; void operator= (TYPE&&) = delete;
     template<class T>
     class InstanceMangerBase {
-    public:
         std::vector<T*> instances;//映射的指针 map pointer
         std::vector<HANDLE> handles;//句柄 handle
+    public:
         static InstanceMangerBase& GetInstance() {//本身是代码层面的单例模式,方便后期调用 singleton mode is convenient for later call
             static InstanceMangerBase instance;
             return instance;
