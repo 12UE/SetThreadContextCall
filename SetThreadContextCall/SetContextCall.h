@@ -389,7 +389,6 @@ namespace stc{
     static SimpleRangeCache<uintptr_t, MEMORY_BASIC_INFORMATION> cache;
     INLINE  SIZE_T VirtualQueryCacheApi(HANDLE hProcess, LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) NOEXCEPT {
         if ((uintptr_t)lpAddress > maxAppAddr) return 0;
-
         auto [result, isHit] = cache.find((uintptr_t)lpAddress);
         if (isHit) {
             if (lpMbi)*lpMbi = result->second.m_value;
