@@ -408,6 +408,9 @@ namespace stc{
     INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)NOEXCEPT {
         return VirtualQueryCacheApi(hProcess, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
     }
+    INLINE BOOL VirtualProtectExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)NOEXCEPT {
+        return VirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);//系统的 VirtualProtectEx  system
+    }
     //空闲块链表 free block list
     class FreeBlockList :public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
         std::deque<FreeBlock> m_freeBlocks;
@@ -507,7 +510,7 @@ namespace stc{
                 VirtualQueryExApi(m_hProcess, (LPVOID)ptr, &mbi, sizeof(mbi));
                 if (mbi.Protect != PAGE_EXECUTE_READWRITE) {
                     DWORD dwoldprotect = 0;
-                    VirtualProtectEx(m_hProcess, (LPVOID)ptr, dwSize, PAGE_EXECUTE_READWRITE, &dwoldprotect);
+                    VirtualProtectExApi(m_hProcess, (LPVOID)ptr, dwSize, PAGE_EXECUTE_READWRITE, &dwoldprotect);
                 }
             }
             return ptr;
