@@ -500,12 +500,15 @@ namespace stc{
             refCount++;
         }
         INLINE uintptr_t _AllocMemApi(SIZE_T dwSize) NOEXCEPT {//‘∂≥Ã∑÷≈‰ƒ⁄¥Ê remote allocate memory
-            auto ptr= (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize);
-            MEMORY_BASIC_INFORMATION mbi{};
-            VirtualQueryExApi(m_hProcess, (LPVOID)ptr, &mbi, sizeof(mbi));
-            if (mbi.Protect != PAGE_EXECUTE_READWRITE) {
-                DWORD dwoldprotect = 0;
-                VirtualProtectEx(m_hProcess, (LPVOID)ptr, dwSize, PAGE_EXECUTE_READWRITE, &dwoldprotect);
+            uintptr_t ptr = NULL;
+            if (m_hProcess) {
+                ptr = (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize);
+                MEMORY_BASIC_INFORMATION mbi{};
+                VirtualQueryExApi(m_hProcess, (LPVOID)ptr, &mbi, sizeof(mbi));
+                if (mbi.Protect != PAGE_EXECUTE_READWRITE) {
+                    DWORD dwoldprotect = 0;
+                    VirtualProtectEx(m_hProcess, (LPVOID)ptr, dwSize, PAGE_EXECUTE_READWRITE, &dwoldprotect);
+                }
             }
             return ptr;
         }
