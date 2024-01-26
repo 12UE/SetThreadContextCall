@@ -17,20 +17,20 @@
 #include <map>
 #include <deque>
 namespace stc{
-    #define INLINE inline
-    #define NOEXCEPT noexcept
-    #define PAGESIZE 0X1000
+    #define INLINE inline   //内联 inline
+    #define NOEXCEPT noexcept   //不抛出异常 no throw exception
+    #define PAGESIZE 0X1000 //页面大小 page size
     #if defined _WIN64
-    #define XIP Rip//instruction pointer
+    #define XIP Rip//instruction pointer    指令指针
     #else
-    #define XIP Eip//instruction pointer
+    #define XIP Eip//instruction pointer    指令指针
     #endif
     class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
     public:
-        INLINE static void Close(HANDLE handle)NOEXCEPT { CloseHandle(handle); }
-        INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }
-        INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }
-        INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return WaitForSingleObject(handle, time); }//单位:毫秒 unit:ms
+        INLINE static void Close(HANDLE handle)NOEXCEPT { CloseHandle(handle); }    //关闭句柄 close handle
+        INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }   //句柄的无效值 invalid value of handle
+        INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }   //判断句柄是否有效 judge whether handle is valid
+        INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return WaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
     };
     template<class Ty>
     class HandleView :public Ty {//采用基础句柄的视图,不负责关闭句柄 use basic handle HandleView,not responsible for closing handle
@@ -86,7 +86,7 @@ namespace stc{
             return &m_handle;
         }
         INLINE Traits* operator->()NOEXCEPT {//允许直接调用句柄的方法 allow to call handle's method directly
-            return (Traits*)this;
+            return (Traits*)this;//强制转换为Traits类型 force convert to Traits type
         }
     };
     template <typename T>
@@ -134,7 +134,7 @@ namespace stc{
                 Owend = true;
             }
             if (!hFile) {
-                throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));
+                throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));   //创建文件映射失败 create file mapping failed
             }
             //这里既关闭映射对象又关闭文件句柄 close map object and file handle 因为映射对象一旦关闭,那么映射到内存的对象也会被释放 because once map object is closed,the object map to memory will be released
             auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));//映射到内存 map to memory 
@@ -158,7 +158,7 @@ namespace stc{
                 Owend = true;
             }
             if (!hFile) {
-                throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));
+                throw std::runtime_error("CreateFileMappingA failed with error code: " + std::to_string(GetLastError()));   //创建文件映射失败 create file mapping failed
             }
             auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
             if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T(std::forward<Args>(args)...);
@@ -169,15 +169,13 @@ namespace stc{
     template<class T>
     INLINE decltype(auto) SingleInstance()NOEXCEPT {
         InstanceManger<T> thisinstance;
-        return InstanceManger<T>::CreateInstance(&thisinstance);
+        return InstanceManger<T>::CreateInstance(&thisinstance);    //创建一个类的实例 create a instance of class
     }
     template<class T, class... Args>
     INLINE decltype(auto) SingleInstance(Args&&... args)NOEXCEPT {
         InstanceManger<T> thisinstance;
-        return InstanceManger<T>::CreateInstance(&thisinstance, args...);
+        return InstanceManger<T>::CreateInstance(&thisinstance, args...);   //创建一个类的实例 create a instance of class
     }
-    #define INLINE inline
-    #define NOEXCEPT noexcept
     #define DELETE_COPYMOVE_CONSTRUCTOR(TYPE) TYPE(const TYPE&) = delete; TYPE(TYPE&&) = delete; void operator= (const TYPE&) = delete; void operator= (TYPE&&) = delete;
     template<class T>
     class InstanceMangerBase {
@@ -192,22 +190,20 @@ namespace stc{
             Clear();
             RemoveHandle();
         }
-        INLINE void InsertObj(T* obj) {
+        INLINE void InsertObj(T* obj) { //插入一个映射对象 insert a map object
             instances.emplace_back(obj);
         }
-        INLINE void InsertHandle(HANDLE handle) {
+        INLINE void InsertHandle(HANDLE handle) {   //插入一个句柄 insert a handle
             handles.emplace_back(handle);
         }
         INLINE void RemoveHandle()NOEXCEPT {
             // 对向量进行排序   sort vector
             std::sort(handles.begin(), handles.end());
-
             // 使用 std::unique 移除相邻的重复元素  use std::unique to remove adjacent duplicate elements
             handles.erase(std::unique(handles.begin(), handles.end()), handles.end());
             //关闭句柄  close handle
             for (auto& it : handles)CloseHandle(it);
             handles.clear();
-
         }
         INLINE void Clear()NOEXCEPT {
             for (auto& it : instances)delete it;
@@ -218,19 +214,19 @@ namespace stc{
     class SingleTon {
     private:
         DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)//删除拷贝构造函数和拷贝赋值函数 delete copy constructor and copy assignment
-            static INLINE T* CreateInstance() NOEXCEPT {
-            auto obj = SingleInstance<T>();
-            auto objptr = obj.get();
+            static INLINE T* CreateInstance() NOEXCEPT {        //创建一个类的实例 create a instance of class
+            auto obj = SingleInstance<T>(); //全局唯一的对象 global unique object
+            auto objptr = obj.get();    //获得对象的指针 get object pointer
             InstanceMangerBase<T>::GetInstance().InsertObj(objptr);//获得映射对象的指针 get map object pointer
             InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);//获得映射对象的句柄 get map object handle
             return objptr;
         }//创建一个类的实例 create a instance of class
         template <class... Args>
         INLINE static INLINE T* CreateInstance(Args&& ...args) NOEXCEPT {
-            auto obj = SingleInstance<T>(std::forward<Args>(args)...);
-            auto objptr = obj.get();
-            InstanceMangerBase<T>::GetInstance().InsertObj(objptr);
-            InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);
+            auto obj = SingleInstance<T>(std::forward<Args>(args)...);  //全局唯一的对象 global unique object
+            auto objptr = obj.get();    //获得对象的指针 get object pointer
+            InstanceMangerBase<T>::GetInstance().InsertObj(objptr); //获得映射对象的指针 get map object pointer
+            InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);   //获得映射对象的句柄 get map object handle
             return objptr;
         }
         template <class... Args>
@@ -238,9 +234,9 @@ namespace stc{
             static std::once_flag flag{};
             static T* instance = nullptr;
             if (!instance) {
-                std::call_once(flag, [&]() {//call once   只调用一次
+                std::call_once(flag, [&]() {//只调用一次保证了当前源码层面的单例模式  call once ensures the singleton mode of current source code
                     instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
-                    });
+                });
             }
             return *instance;
         }
@@ -250,21 +246,27 @@ namespace stc{
             if (!instance) {
                 std::call_once(flag, [&]() {//call once  只调用一次
                     instance = CreateInstance();//element constructor through parameters    通过参数构造元素
-                    });
+                });
             }
             return *instance;
         }
     public:
         SingleTon() = default;
+        std::atomic_bool m_bInit = false;
         template <class... Args>
         INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {
-            return GetInstanceImpl(std::forward<Args>(args)...);
+            T& ptr=GetInstanceImpl(std::forward<Args>(args)...);//获得对象的指针 get object pointer
+            if (!ptr.m_bInit) {
+                ptr.m_bInit = true;
+            }
+            return ptr;
         }
         static T* GetInstancePtr() NOEXCEPT {
-            return &GetInstanceImpl();
+            //当对象没有初始化时,返回nullptr return nullptr when object is not initialized
+            if(m_bInit)return &GetInstanceImpl();//创建一个实例并且返回指针 create a instance and return pointer
         }
     };
-    //debugoutput
+    //debugoutput   输出到调试窗口 output to debug window
     template<class T>
     void DebugOutput(const T& t) {
         //转为字符串    convert to string
@@ -290,7 +292,7 @@ namespace stc{
     constexpr DWORD CacheNormalTTL = 200;
     constexpr DWORD CacheMaxTTL = 4096;
     template<class T>
-    struct RangeCmp {//仿函数   functor
+    struct RangeCmp {//仿函数   functor 用于比较范围  used to compare range
         INLINE bool operator()(const std::pair<T, T>& p1, const std::pair<T, T>& p2)const {
             if (p1.first >= p2.first) return false;
             return p1.second < p2.second;
@@ -299,12 +301,12 @@ namespace stc{
     class FastMutex {
         CRITICAL_SECTION g_cs;
     public:
-        FastMutex() { InitializeCriticalSection(&g_cs); }
-        INLINE CRITICAL_SECTION& Get()NOEXCEPT { return g_cs; }
-        ~FastMutex() { DeleteCriticalSection(&g_cs); }
+        FastMutex() { InitializeCriticalSection(&g_cs); }//初始化临界区 initialize critical section
+        INLINE CRITICAL_SECTION& Get()NOEXCEPT { return g_cs; }//获得临界区 get critical section
+        ~FastMutex() { DeleteCriticalSection(&g_cs); }//删除临界区 delete critical section
     };
     FastMutex lock;
-    template<typename _Tx>class CacheItem {
+    template<typename _Tx>class CacheItem {//缓存项 cache item
     public:
         using timepoint = std::chrono::time_point<std::chrono::system_clock>;
         timepoint m_endtime;
@@ -313,12 +315,12 @@ namespace stc{
         CacheItem(const _Tx& _value, const timepoint& _endtime) :m_endtime(_endtime), m_value(_value) {}
         CacheItem(const _Tx&& _value, const timepoint& _endtime) :m_value(std::move(_value)), m_endtime(_endtime) {}
         ~CacheItem() { m_value.~_Tx(); }
-        INLINE bool IsValid(timepoint now)NOEXCEPT { return now < m_endtime; }
+        INLINE bool IsValid(timepoint now)NOEXCEPT { return now < m_endtime; }//通过当前时间判断是否有效 judge whether is valid through current time
     };
     template<typename _Tx, typename _Ty, class Pr = RangeCmp<_Tx>>
     class SimpleRangeCache {
     protected:
-        std::map<std::pair<_Tx, _Tx>, CacheItem<_Ty>, Pr> m_Cache;
+        std::map<std::pair<_Tx, _Tx>, CacheItem<_Ty>, Pr> m_Cache;//自定义的比较函数 custom compare function
     public:
         using keyType = std::pair<_Tx, _Tx>;
         using cache_item_type = _Ty;
@@ -333,28 +335,27 @@ namespace stc{
                 auto lb = m_Cache.find(_key);
                 if (lb != m_Cache.end()) {
                     lb->second = newValue;
-                }
-                else {
-                    EnterCriticalSection(&lock.Get());
+                }else {
+                    EnterCriticalSection(&lock.Get());//加锁 lock
                     m_Cache.insert(lb, pair_type(_key, newValue));
-                    LeaveCriticalSection(&lock.Get());
+                    LeaveCriticalSection(&lock.Get());//解锁 unlock
                 }
                 static auto firsttime = std::chrono::system_clock::now();
                 if (std::chrono::duration_cast<std::chrono::milliseconds>(nowTime - firsttime).count() > 5000) {//5s
                     firsttime = nowTime;
-                    EnterCriticalSection(&lock.Get());
+                    EnterCriticalSection(&lock.Get());//加锁 lock
                     for (auto it = m_Cache.begin(); it != m_Cache.end();) it = (!it->second.IsValid(nowTime)) ? m_Cache.erase(it) : ++it;
-                    LeaveCriticalSection(&lock.Get());
+                    LeaveCriticalSection(&lock.Get());//解锁 unlock
                 }
-                });
+            });
         }
         INLINE  std::pair<iterator, bool> find(const _Tx& value)NOEXCEPT {
             keyType _key = keyType(value, value);
             if (m_Cache.empty()) return { iterator(),false };
             auto iter = m_Cache.find(_key);
-            EnterCriticalSection(&lock.Get());
+            EnterCriticalSection(&lock.Get());//加锁 lock
             bool IsValidItem = iter->second.IsValid(std::chrono::system_clock::now());
-            LeaveCriticalSection(&lock.Get());
+            LeaveCriticalSection(&lock.Get());//解锁 unlock
             return { iter, iter != m_Cache.end() && IsValidItem };
         }
         INLINE  std::pair<iterator, bool> operator[](_Tx&& value)NOEXCEPT {
@@ -364,14 +365,14 @@ namespace stc{
             keyType& _key = keyType(value, value);
             if (m_Cache.empty()) return;
             auto iter = m_Cache.find(_key);
-            EnterCriticalSection(&lock.Get());
+            EnterCriticalSection(&lock.Get());//加锁 lock
             if (iter != m_Cache.end()) m_Cache.erase(iter);
-            LeaveCriticalSection(&lock.Get());
+            LeaveCriticalSection(&lock.Get());//解锁 unlock
         }
         INLINE  void Clear()NOEXCEPT {
-            EnterCriticalSection(&lock.Get());
+            EnterCriticalSection(&lock.Get());//加锁 lock
             m_Cache.clear();
-            LeaveCriticalSection(&lock.Get());
+            LeaveCriticalSection(&lock.Get());//    解锁 unlock
         }
     };
     constexpr INLINE  bool CheckMask(const DWORD value, const DWORD mask)NOEXCEPT {//判断vakue和mask是否相等    judge whether value and mask is equal
@@ -393,8 +394,7 @@ namespace stc{
         if (isHit) {
             if (lpMbi)*lpMbi = result->second.m_value;
             return sizeof(MEMORY_BASIC_INFORMATION);
-        }
-        else {
+        }else {
             SIZE_T ret = 0;
             if (hProcess && hProcess != INVALID_HANDLE_VALUE) ret = VirtualQueryEx(hProcess, lpAddress, lpMbi, sizeof(MEMORY_BASIC_INFORMATION));
             if (ret > 0) {
@@ -407,7 +407,6 @@ namespace stc{
         }
     }
     INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)NOEXCEPT {
-
         return VirtualQueryCacheApi(hProcess, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
     }
     //空闲块链表 free block list
@@ -428,18 +427,18 @@ namespace stc{
         }
         INLINE void* Get(size_t size)NOEXCEPT {//获得一个空闲块 get a free block
             if (size <= 0) return nullptr;
-            auto iter=std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](FreeBlock block) {return block.size >= size; });
+            auto iter=std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](const FreeBlock& block) {return block.size >= size; });
             if(iter==m_freeBlocks.end()){
-                //空闲链表当中没有
-                //没有找到合适的空闲块,那么就分配一个新的内存块
+                //空闲链表当中没有  find in free block list
+                //没有找到合适的空闲块,那么就分配一个新的内存块 find no suitable free block,then allocate a new memory block
                 void* ptr = nullptr;
                 if (m_hProcess)ptr = VirtualAllocExApi(m_hProcess, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
                 Add(ptr, PAGESIZE);
                 return Get(size);//递归调用 get recursively call
             }else{
-                //空闲链表当中有
+                //空闲链表当中有    find in free block list
                 auto &block = *iter;
-                //空闲链表当中的块减去size
+                //空闲链表当中的块减去size  free block list minus size
                 block.size -= size;
                 auto ptr = (void*)(((uintptr_t)block.ptr) + block.size);
                 if (block.size == 0)m_freeBlocks.erase(iter);
@@ -448,22 +447,22 @@ namespace stc{
             
         }
         INLINE void Free(void* ptr, size_t size)NOEXCEPT {
-            //查allocatebase
+            //查allocatebase    find allocatebase
             MEMORY_BASIC_INFORMATION mbi{};
             VirtualQueryExApi(m_hProcess, ptr, &mbi, sizeof(mbi));
-            //查询空闲列表中有没有和allcatebase相同的块
+            //查询空闲列表中有没有和allcatebase相同的块 find whether there is a block same as allocatebase in free list
             std::lock_guard<std::mutex> lock(m_mutex);
-            auto iter = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](FreeBlock block) {return block.ptr == mbi.AllocationBase; });
+            auto iter = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](const FreeBlock& block) {return block.ptr == mbi.AllocationBase; });
             if (iter != m_freeBlocks.end()) {
                 //如果有,那么就把这个块的大小加上size
                 (*iter).size += size;
             }
-            //查找当前有没有块大PAGE_SIZE
-            auto iter2 = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](FreeBlock block) {return block.size > PAGESIZE; });
+            //查找当前有没有块大PAGE_SIZE   find whether there is a block larger than PAGE_SIZE
+            auto iter2 = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](const FreeBlock block) {return block.size > PAGESIZE; });
             //有就释放这个块
             if (iter2 != m_freeBlocks.end()) {
                 auto& block = *iter2;
-                //释放内存 free memory
+                //释放内存 free memory  
                 if(m_hProcess)VirtualFreeExApi(m_hProcess, block.ptr, block.size, MEM_DECOMMIT);
                 //释放内存 free memory
                 m_freeBlocks.erase(iter2);
@@ -637,9 +636,30 @@ namespace stc{
         else {
             wstr2 = str2;
         }
-        std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower 转换为小写
-        std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
-        return wstr1.compare(wstr2) == 0;//容易忘记这里写什么才是正确的,这里是0,因为compare返回0表示相等 easy to forget what to write here is correct,here is 0,because compare return 0 means equal
+        static std::unordered_map<size_t, bool> equalmap;
+        //计算hash值    calculate hash value
+        auto hash = [](const std::wstring& str)->size_t {
+            static std::hash<std::wstring> hash_fn;
+            return hash_fn(str);
+        };
+        auto hash1 = hash(wstr1);
+        //combine hash value 合并hash值
+        auto combinehash = [](size_t hash1, size_t hash2)->size_t {
+            return hash1 ^ (hash2 << 1);
+        };
+        auto hash2 = hash(wstr2);
+        auto hashvalue = combinehash(hash1, hash2);
+        auto it = equalmap.find(hashvalue);
+        if(it==equalmap.end()){
+           std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower 转换为小写
+            std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
+            auto equal= wstr1.compare(wstr2) == 0;        //容易忘记这里写什么才是正确的,这里是0,因为compare返回0表示相等 easy to forget what to write here is correct,here is 0,because compare return 0 means equal
+            equalmap.insert(std::make_pair(hashvalue, equal));
+            return equal;
+        }else {
+            return it->second;
+        }
+
     }
     enum class EnumStatus {
         Continue,
@@ -1139,7 +1159,7 @@ namespace stc{
                     thread.Resume();//resume thread   恢复线程
                     return EnumStatus::Break;
                     });
-                hEvent.Wait(INFINITE);//wait event
+                hEvent.Wait(INFINITE);//wait event  等待事件
                 if (maptoorigin.size() > 0)postprocess(args...);//post process parameter   后处理参数
                 maptoorigin.clear();//clear map  清除map
                 _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
@@ -1151,10 +1171,10 @@ namespace stc{
             using RetType = std::common_type<decltype(_Fx())>::type;//return type is common type or not 返回类型是常见类型还是不是
             if (!m_bAttached) return RetType();//return default value   返回默认值
             uintptr_t _paramAddr = 0;
-            ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data
-            strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
-            strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
-            strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
+            ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data 线程数据
+            strcpy_s(threadData.eventname, "SetContextCallImpl");//event name   事件名
+            strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll  kernel32.dll
+            strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA 
             strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
             strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
             //创建事件  create event
@@ -1206,8 +1226,8 @@ namespace stc{
             static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
             using RetType = void;
             uintptr_t _paramAddr = 0;
-            ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data
-            strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
+            ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data 线程数据
+            strcpy_s(threadData.eventname, "SetContextCallImpl");//event name   事件名
             strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
             strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
             strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
@@ -1230,22 +1250,22 @@ namespace stc{
                     auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
                     auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
                     m_vecAllocMem.emplace_back(lpFunction);
-                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
+                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存  
                     dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
-                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
-                    using parametertype = decltype(threadData);//get parameter type
-                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
+                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
+                    using parametertype = decltype(threadData);//get parameter type 获取参数类型
+                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
                     m_vecAllocMem.emplace_back(lpParameter);
-                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory
+                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory    写入参数到内存
                     dataContext.lpParameter = (PBYTE)lpParameter.raw();
                     _paramAddr = (uintptr_t)lpParameter.raw();
-                    ctx.XIP = (uintptr_t)lpShell.raw();//set xip
-                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory
-                    thread.SetContext(ctx);//set context
-                    thread.Resume();//resume thread
+                    ctx.XIP = (uintptr_t)lpShell.raw();//set xip    设置xip
+                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory  写入datacontext到内存
+                    thread.SetContext(ctx);//set context    设置上下文
+                    thread.Resume();//resume thread 恢复线程
                     return EnumStatus::Break;
                     });
-                hEvent.Wait(INFINITE);//wait event
+                hEvent.Wait(INFINITE);//wait event  等待事件
                 ClearMemory();
             }
         }
@@ -1256,7 +1276,7 @@ namespace stc{
             if (!m_bAttached) return RetType();
             uintptr_t _paramAddr = 0;
             ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
-            strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
+            strcpy_s(threadData.eventname, "SetContextCallImpl");//event name   事件名
             strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
             strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
             strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
@@ -1268,37 +1288,37 @@ namespace stc{
                 threadData.pFunc[0] = (LPVOID)LoadLibraryA;
                 threadData.pFunc[1] = (LPVOID)GetProcAddress;
                 EnumThread([&](auto& te32)->EnumStatus {
-                    auto thread = Thread(te32);//construct thread
-                    thread.Suspend();//suspend thread
-                    auto ctx = thread.GetContext();//get context
-                    auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory
+                    auto thread = Thread(te32);//construct thread   构造线程
+                    thread.Suspend();//suspend thread   暂停线程
+                    auto ctx = thread.GetContext();//get context    获取上下文
+                    auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory   分配内存
                     m_vecAllocMem.emplace_back(lpShell);//
                     DATA_CONTEXT dataContext{};
                     memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-                    if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter
+                    if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter  处理参数
                     threadData.fn = _Fx;
-                    threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters
-                    auto pFunction = &ThreadFunction2NoReturn<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address
-                    int length = GetFunctionSize((BYTE*)pFunction);//get function length
-                    auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function
-                    m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory
-                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function
-                    dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
-                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip
+                    threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
+                    auto pFunction = &ThreadFunction2NoReturn<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address  获取函数地址
+                    int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
+                    auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
+                    m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
+                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
+                    dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address 设置函数地址
+                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
                     using parametertype = decltype(threadData);
-                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter
-                    m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory
-                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter
-                    dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address
-                    _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address
+                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
+                    m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
+                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
+                    dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
+                    _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address   设置参数地址
                     ctx.XIP = (uintptr_t)lpShell.raw();//set xip
-                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext
-                    thread.SetContext(ctx);//set context
-                    thread.Resume();//resume thread
+                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写入datacontext
+                    thread.SetContext(ctx);//set context    设置上下文
+                    thread.Resume();//resume thread  恢复线程
                     return EnumStatus::Break;
                     });
                 hEvent.Wait(INFINITE);//wait event
-                if (maptoorigin.size() > 0)postprocess(args...);//post process parameter
+                if (maptoorigin.size() > 0)postprocess(args...);//post process parameter    后处理参数
                 maptoorigin.clear();//clear map
                 ClearMemory();
             }
@@ -1339,16 +1359,16 @@ namespace stc{
     };
     template<class _PRE>
     float Test_Speed(int Times, _PRE bin) {
-        DWORD time1 = clock();
-        float count = 0;
-        while (count < Times) {
+        DWORD time1 = clock();  //获取开始时间  get start time
+        float count = 0;    //计数器  counter
+        while (count < Times) { //循环执行  loop execute
             bin();
-            count++;
+            count++;    //计数器加一  counter plus one
         }
-        float elpstime = clock() - (float)time1;
-        auto total = count / (elpstime / 1000.0f);
-        printf("Speed: %0.0f/s\r\n", total);
-        return total;
+        float elpstime = clock() - (float)time1;    //计算时间差  calculate time difference
+        auto total = count / (elpstime / 1000.0f);  //计算速度  calculate speed 公式为：执行次数/（时间差/1000）    formula is: execute times / (time difference / 1000)
+        printf("Speed: %0.0f/s\r\n", total);    //输出速度  output speed
+        return total;   //返回速度  return speed
     }
 }
 
