@@ -1710,12 +1710,11 @@ namespace stc{
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
         INLINE decltype(auto) SetContextUnExportedCallImpl(LPVOID lpfunction, std::string_view funcname, __in Arg ...args) {
-
-            return SetContextCall((T)lpfunction, args...).get();
+            return SetContextCall((T)lpfunction, args...);
         }
         template<class T>
         INLINE decltype(auto) SetContextUnExportedCallImpl(LPVOID lpfunction) {
-            return SetContextCall((T)lpfunction).get();
+            return SetContextCall((T)lpfunction);
         }
         template<class T, class ...Arg>
         INLINE decltype(auto) SetContextExportedCallNoReturnImpl(std::string_view funcname, __in Arg ...args) {
@@ -1730,12 +1729,12 @@ namespace stc{
         template<class T, class ...Arg>
         INLINE decltype(auto) SetContextExportedCallImpl(std::string_view funcname, __in Arg ...args) {
             auto lpfunction = GetRoutine(funcname.data());
-            return SetContextCall((T)lpfunction, args...).get();
+            return SetContextCall((T)lpfunction, args...);
         }
         template<class T>
         INLINE decltype(auto) SetContextExportedCallImpl(std::string_view funcname) {
             auto lpfunction = GetRoutine(funcname.data());
-            return SetContextCall((T)lpfunction).get();
+            return SetContextCall((T)lpfunction);
         }
         template <class _Fn>
         INLINE void SetContextCallNoReturnImpl(_Fn&& _Fx) NOEXCEPT {
