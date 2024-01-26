@@ -431,7 +431,7 @@ namespace stc{
                 //空闲链表当中没有  find in free block list
                 //没有找到合适的空闲块,那么就分配一个新的内存块 find no suitable free block,then allocate a new memory block
                 void* ptr = nullptr;
-                if (m_hProcess)ptr = VirtualAllocExApi(m_hProcess, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                if (m_hProcess)ptr = VirtualAllocExApi(m_hProcess, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
                 Add(ptr, PAGESIZE);
                 return Get(size);//递归调用 get recursively call
             }else{
@@ -500,7 +500,14 @@ namespace stc{
             refCount++;
         }
         INLINE uintptr_t _AllocMemApi(SIZE_T dwSize) NOEXCEPT {//远程分配内存 remote allocate memory
-            return (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize);
+            auto ptr= (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize);
+            MEMORY_BASIC_INFORMATION mbi{};
+            VirtualQueryExApi(m_hProcess, (LPVOID)ptr, &mbi, sizeof(mbi));
+            if (mbi.Protect != PAGE_EXECUTE_READWRITE) {
+                DWORD dwoldprotect = 0;
+                VirtualProtectEx(m_hProcess, (LPVOID)ptr, dwSize, PAGE_EXECUTE_READWRITE, &dwoldprotect);
+            }
+            return ptr;
         }
         INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//远程释放内存 remote free memory
             freeex((HANDLE)m_hProcess, lpAddress);
