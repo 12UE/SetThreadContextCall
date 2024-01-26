@@ -1695,7 +1695,7 @@ namespace stc{
         }
         template<class T, class ...Arg>
         INLINE decltype(auto) SetContextUndocumentedCallNoReturn(LPVOID lpfunction, __in Arg ...args) {
-			return SetContextUnExportedCallNoReturnImpl<T>(lpfunction, args...);
+			return SetContextUndocumentedCallNoReturnImpl<T>(lpfunction, args...);
         }
         template<class T>INLINE static T TONULL() NOEXCEPT { return  reinterpret_cast<T>(0); }
     private:
