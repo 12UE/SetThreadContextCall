@@ -440,6 +440,7 @@ namespace stc{
                 //空闲链表当中的块减去size  free block list minus size
                 block.size -= size;
                 auto ptr = (void*)(((uintptr_t)block.ptr) + block.size);
+                std::lock_guard<std::mutex> lock(m_mutex);
                 if (block.size == 0)m_freeBlocks.erase(iter);
                 return ptr;
             }
