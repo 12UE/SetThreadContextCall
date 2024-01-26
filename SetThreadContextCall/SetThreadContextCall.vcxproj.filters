@@ -26,11 +26,5 @@
     <ClInclude Include="SetContextCall.h">
       <Filter>源文件</Filter>
     </ClInclude>
-    <ClInclude Include="GetRoutine.h">
-      <Filter>源文件</Filter>
-    </ClInclude>
-    <ClInclude Include="xorstr.h">
-      <Filter>源文件</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>
