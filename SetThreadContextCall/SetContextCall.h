@@ -1690,30 +1690,30 @@ namespace stc{
         }
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
-        INLINE decltype(auto) SetContextUnExportedCall(LPVOID lpfunction, std::string_view funcname, __in Arg ...args) {
-			return SetContextUnExportedCallImpl<T>(lpfunction, funcname, args...);
+        INLINE decltype(auto) SetContextUndocumentedCall(LPVOID lpfunction,__in Arg ...args) {
+			return SetContextUndocumentedCallImpl<T>(lpfunction,args...);
         }
         template<class T, class ...Arg>
-        INLINE decltype(auto) SetContextUnExportedCallNoReturn(LPVOID lpfunction, __in Arg ...args) {
+        INLINE decltype(auto) SetContextUndocumentedCallNoReturn(LPVOID lpfunction, __in Arg ...args) {
 			return SetContextUnExportedCallNoReturnImpl<T>(lpfunction, args...);
         }
         template<class T>INLINE static T TONULL() NOEXCEPT { return  reinterpret_cast<T>(0); }
     private:
         template<class T, class ...Arg>
-        INLINE decltype(auto) SetContextUnExportedCallNoReturnImpl(LPVOID lpfunction, __in Arg ...args) {
+        INLINE decltype(auto) SetContextUndocumentedCallNoReturnImpl(LPVOID lpfunction, __in Arg ...args) {
             return SetContextCallNoReturn((T)lpfunction, args...);
         }
         template<class T>
-        INLINE decltype(auto) SetContextUnExportedCallNoReturnImpl(LPVOID lpfunction, std::string_view funcname) {
+        INLINE decltype(auto) SetContextUndocumentedCallNoReturnImpl(LPVOID lpfunction, std::string_view funcname) {
             return SetContextCallNoReturn((T)lpfunction);
         }
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
-        INLINE decltype(auto) SetContextUnExportedCallImpl(LPVOID lpfunction, std::string_view funcname, __in Arg ...args) {
+        INLINE decltype(auto) SetContextUndocumentedCallImpl(LPVOID lpfunction,__in Arg ...args) {
             return SetContextCall((T)lpfunction, args...);
         }
         template<class T>
-        INLINE decltype(auto) SetContextUnExportedCallImpl(LPVOID lpfunction) {
+        INLINE decltype(auto) SetContextUndocumentedCallImpl(LPVOID lpfunction) {
             return SetContextCall((T)lpfunction);
         }
         template<class T, class ...Arg>
@@ -1936,7 +1936,6 @@ namespace stc{
             _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value 读取参数以返回值
             return threadData.retdata;//return value    返回值
         }
-        
         INLINE DWORD GetProcessIdByName(const char* processName) NOEXCEPT {//get process id by name   通过名称获取进程id
             DWORD pid = 0;
             //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
