@@ -1629,13 +1629,9 @@ namespace stc{
             std::unique_ptr<BYTE[]> p(new BYTE[sizeof(T)]);
             if constexpr (sizeof...(args)) {
                 new(p.get()) T(std::forward<Args>(args)...);
-            }
-            else {
+            }else {
                 new(p.get()) T();
             }
-            //构造对象 construct object
-            
-            //写入内存 write to memory
             _WriteApi(Instance, p.get(), sizeof(T));
         }
         INLINE void ClearMemory() NOEXCEPT {
