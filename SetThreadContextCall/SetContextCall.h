@@ -153,6 +153,14 @@ namespace stc{
             refcount++;//增加引用计数 increase reference count
 			return m_handle;
 		}
+        void reset()NOEXCEPT {
+			Release();
+			m_handle = Traits::InvalidHandle();
+			m_bOwner = false;
+		}
+        void attatch()NOEXCEPT {//获取所有权 get ownership
+            m_bOwner = true;
+        }
         void detach()NOEXCEPT {//释放所有权 release ownership
 			m_bOwner = false;
 		}
