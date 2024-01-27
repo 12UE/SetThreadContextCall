@@ -64,6 +64,7 @@ namespace stc{
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< CHAR, _STR_LEN_ > XorStr(IN CHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< CHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< WCHAR, _STR_LEN_ > XorStr(IN WCHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< WCHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< char32_t, _STR_LEN_ > XorStr(IN char32_t CONST(&String)[_STR_LEN_]) { return _XORSTR_< char32_t, _STR_LEN_ >(String); }
+#define xor_str( _STR_ ) XorStr( _STR_ ).String()
     #define INLINE inline   //内联 inline
     #define NOEXCEPT noexcept   //不抛出异常 no throw exception
     class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
@@ -165,7 +166,6 @@ namespace stc{
 			m_bOwner = false;
 		}
     };
-#define xor_str( _STR_ ) XorStr( _STR_ ).String()
     typedef struct _PEB_LDR_DATA_64 {
         UINT Length;
         UCHAR Initialized;
@@ -277,7 +277,7 @@ namespace stc{
         WIN32_FIND_DATAA findData{};
         std::vector<std::string> fullPaths;
         bool bRet = true;
-        for (auto hFind = FindFirstFileA((path + "\\*").c_str(), &findData); bRet&& hFind; bRet = FindNextFileA(hFind, &findData)){
+        for (GenericHandle<HANDLE,FileHandle> hFind = FindFirstFileA((path + "\\*").c_str(), &findData); bRet&& hFind; bRet = FindNextFileA(hFind, &findData)){
             const std::string fileName = findData.cFileName;
             const std::string fullPath = path + "\\" + fileName;
             if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -286,7 +286,7 @@ namespace stc{
         }
 #pragma omp parallel for schedule(dynamic,1)
         for (int i = 0; i < fullPaths.size(); i++) {
-            bin(fullPaths[i].c_str());
+            bin(fullPaths[i]);
         }
     }
     static inline PIMAGE_NT_HEADERS GetNtHeader(LPVOID buffer) {
@@ -321,7 +321,6 @@ namespace stc{
         }
         return (uintptr_t)0;
     }
-#define EXPORT extern "C" __declspec(dllexport) __forceinline
     static inline std::vector<std::string> ScanExport(char* buffer) {//由于映射 buffer会相同
         std::vector<std::string> result;
         auto pNtHeader = GetNtHeader(buffer);
@@ -638,7 +637,7 @@ namespace stc{
         }
     };
     static SystemRoutine init;
-    EXPORT void* GetRoutine(const char* _functionName, const char* _moduleName = "") {
+    void* GetRoutine(const char* _functionName, const char* _moduleName = "") {
         return init.GetRoutine(_functionName, _moduleName);
     }
     #define PAGESIZE 0X1000 //页面大小 page size
@@ -1190,12 +1189,11 @@ namespace stc{
            std::transform(wstr1.begin(), wstr1.end(), wstr1.begin(), towlower);//transform to lower 转换为小写
             std::transform(wstr2.begin(), wstr2.end(), wstr2.begin(), towlower);//transform to lower    转换为小写
             auto equal= wstr1.compare(wstr2) == 0;        //容易忘记这里写什么才是正确的,这里是0,因为compare返回0表示相等 easy to forget what to write here is correct,here is 0,because compare return 0 means equal
-            equalmap.insert(std::make_pair(hashvalue, equal));
+            equalmap.emplace(std::make_pair(hashvalue, equal));
             return equal;
         }else {
             return it->second;
         }
-
     }
     enum class EnumStatus {
         Continue,
@@ -1259,8 +1257,7 @@ namespace stc{
         auto threadData = static_cast<ThreadData<Fn, T>*>(param);
         if constexpr (std::is_same_v<T, void>) {
             threadData->fn();
-        }
-        else {
+        }else {
             threadData->retdata = threadData->fn();
         }
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
@@ -1924,7 +1921,6 @@ namespace stc{
             DWORD pid = 0;
             //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
             GenericHandle<HANDLE, NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-            //PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
             PROCESSENTRY32W processEntry{ sizeof(PROCESSENTRY32W), };
             //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name isprocessName
             for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet&& hSnapshot; bRet = Process32NextW(hSnapshot, &processEntry)) {
