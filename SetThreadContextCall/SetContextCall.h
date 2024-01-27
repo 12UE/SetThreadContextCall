@@ -68,13 +68,20 @@ namespace stc{
     #define NOEXCEPT noexcept   //不抛出异常 no throw exception
     class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
     public:
-        INLINE static void Close(HANDLE& handle)NOEXCEPT { 
+        INLINE static void Close(HANDLE& handle)NOEXCEPT {
             CloseHandle(handle);
             handle = InvalidHandle();
         }    //关闭句柄 close handle
         INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }   //句柄的无效值 invalid value of handle
         INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }   //判断句柄是否有效 judge whether handle is valid
         INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return WaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
+    };
+    class FileHandle:public NormalHandle {
+    public:
+        INLINE static void Close(HANDLE& handle)NOEXCEPT {
+            FindClose(handle);
+            handle = InvalidHandle();
+        }
     };
     template<class Ty>
     class HandleView :public Ty {//采用基础句柄的视图,不负责关闭句柄 use basic handle HandleView,not responsible for closing handle
@@ -86,15 +93,23 @@ namespace stc{
     private:
         T m_handle = Traits::InvalidHandle();
         bool m_bOwner = false;//所有者 owner
+        int refcount = 1;
+        void Release() {
+			//仅仅refcount>=0的时候
+            if(refcount>=0) refcount--;
+            if (refcount==0) {
+                if (m_bOwner && IsValid()) {//当句柄的所有者为true并且句柄有效时 When the handle owner is true and the handle is valid
+                    Traits::Close(m_handle);//关闭句柄 close handle
+                    //设置句柄为无效值 set handle to invalid value
+                    m_bOwner = false;//设置句柄所有者为false set handle owner to false
+                }
+            }
+		}
         INLINE bool IsValid()NOEXCEPT { return Traits::IsValid(m_handle); }
     public:
         GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}//构造 m_bOwner默认为true construct m_bOwner default is true
         ~GenericHandle() {
-            if (m_bOwner && IsValid()) {//当句柄的所有者为true并且句柄有效时 When the handle owner is true and the handle is valid
-                Traits::Close(m_handle);//关闭句柄 close handle
-               //设置句柄为无效值 set handle to invalid value
-                m_bOwner = false;//设置句柄所有者为false set handle owner to false
-            }
+            Release();
         }
         GenericHandle(GenericHandle&) = delete;//禁止拷贝构造函数 disable copy constructor
         GenericHandle& operator =(const GenericHandle&) = delete;//禁止拷贝赋值函数 disable copy assignment
@@ -102,8 +117,10 @@ namespace stc{
             if (m_handle != other.m_handle) {
                 m_handle = other.m_handle;
                 m_bOwner = other.m_bOwner;
+                refcount=other.refcount;
                 other.m_handle = Traits::InvalidHandle();
                 other.m_bOwner = false;
+                other.refcount = 0;//防止析构函数释放句柄 prevent destructor release handle
             }
             return *this;
         }
@@ -132,6 +149,13 @@ namespace stc{
         INLINE Traits* operator->()NOEXCEPT {//允许直接调用句柄的方法 allow to call handle's method directly
             return (Traits*)this;//强制转换为Traits类型 force convert to Traits type
         }
+        T get()NOEXCEPT {
+            refcount++;//增加引用计数 increase reference count
+			return m_handle;
+		}
+        void detach()NOEXCEPT {//释放所有权 release ownership
+			m_bOwner = false;
+		}
     };
 #define xor_str( _STR_ ) XorStr( _STR_ ).String()
     typedef struct _PEB_LDR_DATA_64 {
@@ -243,17 +267,14 @@ namespace stc{
     template<typename Pre>
     void GetFiles(const std::string& path, const Pre& bin) {
         WIN32_FIND_DATAA findData{};
-        HANDLE hFind = FindFirstFileA((path + "\\*").c_str(), &findData);
         std::vector<std::string> fullPaths;
-        if (hFind != INVALID_HANDLE_VALUE) {
-            do {
-                const std::string fileName = findData.cFileName;
-                const std::string fullPath = path + "\\" + fileName;
-                if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                    fullPaths.emplace_back(fullPath);
-                }
-            } while (FindNextFileA(hFind, &findData));
-            FindClose(hFind);
+        bool bRet = true;
+        for (auto hFind = FindFirstFileA((path + "\\*").c_str(), &findData); bRet&& hFind; bRet = FindNextFileA(hFind, &findData)){
+            const std::string fileName = findData.cFileName;
+            const std::string fullPath = path + "\\" + fileName;
+            if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                fullPaths.emplace_back(fullPath);
+            }
         }
 #pragma omp parallel for schedule(dynamic,1)
         for (int i = 0; i < fullPaths.size(); i++) {
@@ -281,7 +302,6 @@ namespace stc{
             }
         }
         return NULL;
-
     }
     static inline uintptr_t RVA2Offset(uintptr_t RVA, PIMAGE_NT_HEADERS pNtHeader, LPVOID Data) {
         auto pDosHeader = (PIMAGE_DOS_HEADER)Data;
@@ -411,9 +431,6 @@ namespace stc{
         }
         return map;
     }
-    inline bool IsFileExistW(const wchar_t* filename) {
-        return GetFileAttributesW(filename) != INVALID_FILE_ATTRIBUTES;
-    }
     inline bool IsFileExistA(const char* filename) {
         return GetFileAttributesA(filename) != INVALID_FILE_ATTRIBUTES;
     }
@@ -422,21 +439,19 @@ namespace stc{
             return ::GetFileSize(m_FileHandle, NULL);
         }
     public:
-        HANDLE m_FileHandle = INVALID_HANDLE_VALUE;
+        GenericHandle <HANDLE,NormalHandle> m_FileHandle = INVALID_HANDLE_VALUE;
         void* mapview = nullptr;
         DWORD m_FileSize = 0;
-        FileMapView(HANDLE hFile) {
+        FileMapView(HANDLE hFile,DWORD PROTECT) {
             m_FileHandle = hFile;
             m_FileSize = GetFileSize();
-            GenericHandle <HANDLE,HandleView<NormalHandle>> hFileMap = CreateFileMappingA(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
-            if (hFileMap && hFileMap != INVALID_HANDLE_VALUE) {
-                mapview = MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0);
+            m_FileHandle = CreateFileMappingA(hFile, NULL, PROTECT, 0, 0, NULL);
+            if (m_FileHandle) {
+                mapview = MapViewOfFile(m_FileHandle, FILE_MAP_READ, 0, 0, 0);
             }
         }
         ~FileMapView() {
             if (mapview)UnmapViewOfFile(mapview);
-            CloseHandle(m_FileHandle);
-            m_FileHandle = INVALID_HANDLE_VALUE;
         }
         void* GetBase() {
             return mapview;
@@ -535,17 +550,17 @@ namespace stc{
 #pragma omp parallel for schedule(dynamic,1)
             for (int i = 0; i < (int)libPath.size(); i++) {
                 if (IsFileExistA(libPath[i].c_str())) {
-                    auto hFile = CreateFileA(libPath[i].c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                    GenericHandle<HANDLE,NormalHandle> hFile = CreateFileA(libPath[i].c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
                     DWORD	dwFileSize = GetFileSize(hFile, 0);
                     std::vector<std::string> ExportFuncList{};
                     if ((dwFileSize / 8 / 1024) > 10) {
-                        FileMapView mapview(hFile);
+                        FileMapView mapview(hFile.get(), PAGE_READONLY);
                         ExportFuncList = ScanExport(((char*)mapview.GetBase()));
                     }
                     else {
                         std::unique_ptr<char[]> buffer(new char[dwFileSize]);
                         DWORD dwRead = 0;
-                        ReadFile(hFile, buffer.get(), dwFileSize, &dwRead, NULL);
+                        std::ignore=ReadFile(hFile, buffer.get(), dwFileSize, &dwRead, NULL);
                         ExportFuncList = ScanExport(buffer.get());
                     }
 #pragma omp critical
@@ -618,14 +633,12 @@ namespace stc{
     EXPORT void* GetRoutine(const char* _functionName, const char* _moduleName = "") {
         return init.GetRoutine(_functionName, _moduleName);
     }
-    
     #define PAGESIZE 0X1000 //页面大小 page size
     #if defined _WIN64
     #define XIP Rip//instruction pointer    指令指针
     #else
     #define XIP Eip//instruction pointer    指令指针
     #endif
-    
     template <typename T>
     std::string GetMapName() {//获取共享内存的名字 get shared memory name
         DWORD pid = GetCurrentProcessId();
@@ -1270,7 +1283,6 @@ namespace stc{
         auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
         pCloseHandle(hEventHandle);
     }
-
     template <class Fn, class T, class... Args>
     AUTOTYPE ThreadFunction2(void* param) noexcept {
         auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
@@ -1630,13 +1642,11 @@ namespace stc{
         INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
             if (m_bAttached) {
                 GenericHandle<HANDLE, NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-                if (hSnapshot) {
-                    THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
-                    for (auto bRet = Thread32First(hSnapshot, &threadEntry); bRet; bRet = Thread32Next(hSnapshot, &threadEntry)) {
-                        if (threadEntry.th32OwnerProcessID == m_pid) {
-                            Thread thread(threadEntry);
-                            if (thread && pre(threadEntry) == EnumStatus::Break)break;
-                        }
+                THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
+                for (auto bRet = Thread32First(hSnapshot, &threadEntry); bRet&& hSnapshot; bRet = Thread32Next(hSnapshot, &threadEntry)) {
+                    if (threadEntry.th32OwnerProcessID == m_pid) {
+                        Thread thread(threadEntry);
+                        if (thread && pre(threadEntry) == EnumStatus::Break)break;
                     }
                 }
             }
@@ -1705,9 +1715,7 @@ namespace stc{
             }else {
                 return SetContextCallNoReturn((T)lpfunction);
             }
-            
         }
-
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
         INLINE AUTOTYPE SetContextUndocumentedCallImpl(LPVOID lpfunction,__in Arg ...args) {
@@ -1908,34 +1916,19 @@ namespace stc{
             DWORD pid = 0;
             //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
             GenericHandle<HANDLE, NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-            if (hSnapshot) {
-                //PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
-                PROCESSENTRY32W processEntry{ sizeof(PROCESSENTRY32W), };
-                //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name is processName
-                for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet; bRet = Process32NextW(hSnapshot, &processEntry)) {
-                    //比较进程名 compare process name 不区分大小写不区分char*和wchar_t* case insensitive for char* and wchar_t*
-                    if (_ucsicmp(processEntry.szExeFile, processName)) {
-                        pid = processEntry.th32ProcessID;
-                        break;
-                    }
+            //PROCESSENTRY32W processEntry = { sizeof(PROCESSENTRY32W), };
+            PROCESSENTRY32W processEntry{ sizeof(PROCESSENTRY32W), };
+            //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name isprocessName
+            for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet&& hSnapshot; bRet = Process32NextW(hSnapshot, &processEntry)) {
+                //比较进程名 compare process name 不区分大小写不区分char*和wchar_t* case insensitive for char* and wchar_t*
+                if (_ucsicmp(processEntry.szExeFile, processName)) {
+                    pid = processEntry.th32ProcessID;
+                    break;
                 }
             }
             return pid;
         }
     };
-    template<class _PRE>
-    float Test_Speed(int Times, _PRE bin) {
-        DWORD time1 = clock();  //获取开始时间  get start time
-        float count = 0;    //计数器  counter
-        while (count < Times) { //循环执行  loop execute
-            bin();
-            count++;    //计数器加一  counter plus one
-        }
-        float elpstime = clock() - (float)time1;    //计算时间差  calculate time difference
-        auto total = count / (elpstime / 1000.0f);  //计算速度  calculate speed 公式为：执行次数/（时间差/1000）    formula is: execute times / (time difference / 1000)
-        printf(xor_str("Speed: %0.0f/s\r\n"), total);    //输出速度  output speed
-        return total;   //返回速度  return speed
-    }
 }
 
 
