@@ -63,6 +63,75 @@ namespace stc{
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< CHAR, _STR_LEN_ > XorStr(IN CHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< CHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< WCHAR, _STR_LEN_ > XorStr(IN WCHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< WCHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< char32_t, _STR_LEN_ > XorStr(IN char32_t CONST(&String)[_STR_LEN_]) { return _XORSTR_< char32_t, _STR_LEN_ >(String); }
+    #define INLINE inline   //内联 inline
+    #define NOEXCEPT noexcept   //不抛出异常 no throw exception
+    class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
+    public:
+        INLINE static void Close(HANDLE& handle)NOEXCEPT { 
+            CloseHandle(handle);
+            handle = InvalidHandle();
+        }    //关闭句柄 close handle
+        INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }   //句柄的无效值 invalid value of handle
+        INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }   //判断句柄是否有效 judge whether handle is valid
+        INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return WaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
+    };
+    template<class Ty>
+    class HandleView :public Ty {//采用基础句柄的视图,不负责关闭句柄 use basic handle HandleView,not responsible for closing handle
+    public:
+        INLINE static void Close(HANDLE& handle)NOEXCEPT { /*作为视图并不关闭 as a HandleView  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
+    };
+    template<class T, class Traits>
+    class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
+    private:
+        T m_handle = Traits::InvalidHandle();
+        bool m_bOwner = false;//所有者 owner
+        INLINE bool IsValid()NOEXCEPT { return Traits::IsValid(m_handle); }
+    public:
+        GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}//构造 m_bOwner默认为true construct m_bOwner default is true
+        ~GenericHandle() {
+            if (m_bOwner && IsValid()) {//当句柄的所有者为true并且句柄有效时 When the handle owner is true and the handle is valid
+                Traits::Close(m_handle);//关闭句柄 close handle
+               //设置句柄为无效值 set handle to invalid value
+                m_bOwner = false;//设置句柄所有者为false set handle owner to false
+            }
+        }
+        GenericHandle(GenericHandle&) = delete;//禁止拷贝构造函数 disable copy constructor
+        GenericHandle& operator =(const GenericHandle&) = delete;//禁止拷贝赋值函数 disable copy assignment
+        INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {   //移动赋值 move assignment
+            if (m_handle != other.m_handle) {
+                m_handle = other.m_handle;
+                m_bOwner = other.m_bOwner;
+                other.m_handle = Traits::InvalidHandle();
+                other.m_bOwner = false;
+            }
+            return *this;
+        }
+        //等待句柄 wait handle 单位:毫秒 unit:ms
+        INLINE DWORD Wait(DWORD time)NOEXCEPT {
+            return Traits::Wait(m_handle, time);
+        }
+        //判断和T类型是否相同 judge whether is same type with T
+        inline bool operator==(const T& handle)NOEXCEPT {//重载== overload ==
+            return m_handle == handle;
+        }
+        //重载!= overload !=
+        inline bool operator!=(const T& handle)NOEXCEPT {//重载!= overload !=
+            return m_handle != handle;
+        }
+        INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
+            return m_handle;
+        }
+        INLINE operator bool() NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
+            return IsValid();
+        }
+        //重载取地址 overload get address of handle 
+        INLINE T* operator&()NOEXCEPT {
+            return &m_handle;
+        }
+        INLINE Traits* operator->()NOEXCEPT {//允许直接调用句柄的方法 allow to call handle's method directly
+            return (Traits*)this;//强制转换为Traits类型 force convert to Traits type
+        }
+    };
 #define xor_str( _STR_ ) XorStr( _STR_ ).String()
     typedef struct _PEB_LDR_DATA_64 {
         UINT Length;
@@ -358,7 +427,7 @@ namespace stc{
         FileMapView(HANDLE hFile) {
             m_FileHandle = hFile;
             m_FileSize = GetFileSize();
-            auto hFileMap = CreateFileMappingA(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
+            GenericHandle <HANDLE,HandleView<NormalHandle>> hFileMap = CreateFileMappingA(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
             if (hFileMap && hFileMap != INVALID_HANDLE_VALUE) {
                 mapview = MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0);
             }
@@ -548,78 +617,14 @@ namespace stc{
     EXPORT void* GetRoutine(const char* _functionName, const char* _moduleName = "") {
         return init.GetRoutine(_functionName, _moduleName);
     }
-    #define INLINE inline   //内联 inline
-    #define NOEXCEPT noexcept   //不抛出异常 no throw exception
+    
     #define PAGESIZE 0X1000 //页面大小 page size
     #if defined _WIN64
     #define XIP Rip//instruction pointer    指令指针
     #else
     #define XIP Eip//instruction pointer    指令指针
     #endif
-    class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
-    public:
-        INLINE static void Close(HANDLE handle)NOEXCEPT { CloseHandle(handle); }    //关闭句柄 close handle
-        INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }   //句柄的无效值 invalid value of handle
-        INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }   //判断句柄是否有效 judge whether handle is valid
-        INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return WaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
-    };
-    template<class Ty>
-    class HandleView :public Ty {//采用基础句柄的视图,不负责关闭句柄 use basic handle HandleView,not responsible for closing handle
-    public:
-        INLINE static void Close(HANDLE handle)NOEXCEPT { /*作为视图并不关闭 as a HandleView  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
-    };
-    template<class T, class Traits>
-    class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
-    private:
-        T m_handle = Traits::InvalidHandle();
-        bool m_bOwner = false;//所有者 owner
-        INLINE bool IsValid()NOEXCEPT { return Traits::IsValid(m_handle); }
-    public:
-        GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}//构造 m_bOwner默认为true construct m_bOwner default is true
-        ~GenericHandle() {
-            if (m_bOwner && IsValid()) {//当句柄的所有者为true并且句柄有效时 When the handle owner is true and the handle is valid
-                Traits::Close(m_handle);//关闭句柄 close handle
-                m_handle = Traits::InvalidHandle();//设置句柄为无效值 set handle to invalid value
-                m_bOwner = false;//设置句柄所有者为false set handle owner to false
-            }
-        }
-        GenericHandle(GenericHandle&) = delete;//禁止拷贝构造函数 disable copy constructor
-        GenericHandle& operator =(const GenericHandle&) = delete;//禁止拷贝赋值函数 disable copy assignment
-        INLINE GenericHandle& operator =(GenericHandle&& other)NOEXCEPT {   //移动赋值 move assignment
-            if (m_handle != other.m_handle) {
-                m_handle = other.m_handle;
-                m_bOwner = other.m_bOwner;
-                other.m_handle = Traits::InvalidHandle();
-                other.m_bOwner = false;
-            }
-            return *this;
-        }
-        //等待句柄 wait handle 单位:毫秒 unit:ms
-        INLINE DWORD Wait(DWORD time)NOEXCEPT {
-            return Traits::Wait(m_handle, time);
-        }
-        //判断和T类型是否相同 judge whether is same type with T
-        inline bool operator==(const T& handle)NOEXCEPT {//重载== overload ==
-            return m_handle == handle;
-        }
-        //重载!= overload !=
-        inline bool operator!=(const T& handle)NOEXCEPT {//重载!= overload !=
-            return m_handle != handle;
-        }
-        INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
-            return m_handle;
-        }
-        INLINE operator bool() NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
-            return IsValid();
-        }
-        //重载取地址 overload get address of handle 
-        INLINE T* operator&()NOEXCEPT {
-            return &m_handle;
-        }
-        INLINE Traits* operator->()NOEXCEPT {//允许直接调用句柄的方法 allow to call handle's method directly
-            return (Traits*)this;//强制转换为Traits类型 force convert to Traits type
-        }
-    };
+    
     template <typename T>
     std::string GetMapName() {//获取共享内存的名字 get shared memory name
         DWORD pid = GetCurrentProcessId();
@@ -635,6 +640,12 @@ namespace stc{
         bool isOwend = false;
     public:
         HANDLE hFile;
+        Instance(){
+            objaddr=NULL;
+            mapaddr = NULL;
+            isOwend = false;
+            hFile = INVALID_HANDLE_VALUE;
+        }
         Instance(uintptr_t objaddr, LPVOID _mapaddr, bool isOwn, HANDLE hFile) :objaddr(objaddr), isOwend(isOwn), hFile(hFile), mapaddr(_mapaddr) {
         }
         ~Instance() {
@@ -649,34 +660,10 @@ namespace stc{
     template<class T>
     class InstanceManger {
     public:
-        void* objaddr;//管理指针
-        INLINE static Instance<T> CreateInstance(InstanceManger* thisinstance) {
-            std::atomic_bool Owend = false;
-            HANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
-            if (!hFile) {
-                // 创建文件映射 Create file mapping
-                hFile = CreateFileMappingA(
-                    INVALID_HANDLE_VALUE, // 使用系统分页文件 use system paging file
-                    NULL,                 // 默认安全属性   default security attributes
-                    PAGE_READWRITE,       // 读写权限   read/write access
-                    0,                    // 最大对象大小（高位）   maximum object size (high-order DWORD)
-                    sizeof(T),            // 最大对象大小（低位）   maximum object size (low-order DWORD)
-                    GetMapName<T>().c_str()); // 映射对象的名字// 映射对象的名字 map object name
-                Owend = true;
-            }
-            if (!hFile) {
-                throw std::runtime_error(xor_str("CreateFileMappingA failed with error code: ") + std::to_string(GetLastError()));   //创建文件映射失败 create file mapping failed
-            }
-            //这里既关闭映射对象又关闭文件句柄 close map object and file handle 因为映射对象一旦关闭,那么映射到内存的对象也会被释放 because once map object is closed,the object map to memory will be released
-            auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));//映射到内存 map to memory 
-            if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T();//如果是第一次创建,那么初始化对象 if first create,then initialize object
-            Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);//映射对象交给Instance管理 map object is managed by Instance
-            return ret;
-        }
         template<class... Args>
         INLINE static Instance<T> CreateInstance(InstanceManger* thisinstance, Args&&... args) {
             std::atomic_bool Owend = false;
-            HANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
+            GenericHandle<HANDLE, HandleView<NormalHandle>> hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
             if (!hFile) {
                 // 创建文件映射 Create file mapping
                 hFile = CreateFileMappingA(
@@ -692,16 +679,15 @@ namespace stc{
                 throw std::runtime_error(xor_str("CreateFileMappingA failed with error code: ") + std::to_string(GetLastError()));   //创建文件映射失败 create file mapping failed
             }
             auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
-            if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T(std::forward<Args>(args)...);
+            if constexpr (sizeof...(Args) > 0) {
+                if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T(std::forward<Args>(args)...);
+            }else {
+                if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T();
+            }
             Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);
             return ret;
         }
     };
-    template<class T>
-    INLINE decltype(auto) SingleInstance()NOEXCEPT {
-        InstanceManger<T> thisinstance;
-        return InstanceManger<T>::CreateInstance(&thisinstance);    //创建一个类的实例 create a instance of class
-    }
     template<class T, class... Args>
     INLINE decltype(auto) SingleInstance(Args&&... args)NOEXCEPT {
         InstanceManger<T> thisinstance;
@@ -744,17 +730,14 @@ namespace stc{
     template<typename T >
     class SingleTon {
     private:
-        DELETE_COPYMOVE_CONSTRUCTOR(SingleTon)//删除拷贝构造函数和拷贝赋值函数 delete copy constructor and copy assignment
-            static INLINE T* CreateInstance() NOEXCEPT {        //创建一个类的实例 create a instance of class
-            auto obj = SingleInstance<T>(); //全局唯一的对象 global unique object
-            auto objptr = obj.get();    //获得对象的指针 get object pointer
-            InstanceMangerBase<T>::GetInstance().InsertObj(objptr);//获得映射对象的指针 get map object pointer
-            InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);//获得映射对象的句柄 get map object handle
-            return objptr;
-        }//创建一个类的实例 create a instance of class
         template <class... Args>
         INLINE static INLINE T* CreateInstance(Args&& ...args) NOEXCEPT {
-            auto obj = SingleInstance<T>(std::forward<Args>(args)...);  //全局唯一的对象 global unique object
+            Instance<T> obj{};
+            if constexpr (sizeof...(Args) > 0) {
+                obj = SingleInstance<T>(std::forward<Args>(args)...);
+            }else {
+                obj = SingleInstance<T>();
+            }
             auto objptr = obj.get();    //获得对象的指针 get object pointer
             InstanceMangerBase<T>::GetInstance().InsertObj(objptr); //获得映射对象的指针 get map object pointer
             InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);   //获得映射对象的句柄 get map object handle
@@ -766,35 +749,21 @@ namespace stc{
             static T* instance = nullptr;
             if (!instance) {
                 std::call_once(flag, [&]() {//只调用一次保证了当前源码层面的单例模式  call once ensures the singleton mode of current source code
-                    instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
-                });
-            }
-            return *instance;
-        }
-        INLINE static T& GetInstanceImpl() NOEXCEPT {
-            static std::once_flag flag{};
-            static T* instance = nullptr;
-            if (!instance) {
-                std::call_once(flag, [&]() {//call once  只调用一次
-                    instance = CreateInstance();//element constructor through parameters    通过参数构造元素
+                    if constexpr (sizeof...(Args) > 0) {
+                        instance = CreateInstance(args...);//element constructor through parameters    通过参数构造元素
+                    }else {
+                        instance = CreateInstance();//element constructor through parameters    通过参数构造元素
+                    }
                 });
             }
             return *instance;
         }
     public:
         SingleTon() = default;
-        std::atomic_bool m_bInit = false;
         template <class... Args>
         INLINE static T& GetInstance(Args&& ...args) NOEXCEPT {
             T& ptr=GetInstanceImpl(std::forward<Args>(args)...);//获得对象的指针 get object pointer
-            if (!ptr.m_bInit) {
-                ptr.m_bInit = true;
-            }
             return ptr;
-        }
-        static T* GetInstancePtr() NOEXCEPT {
-            //当对象没有初始化时,返回nullptr return nullptr when object is not initialized
-            if(m_bInit)return &GetInstanceImpl();//创建一个实例并且返回指针 create a instance and return pointer
         }
     };
     //debugoutput   输出到调试窗口 output to debug window
@@ -806,7 +775,6 @@ namespace stc{
         OutputDebugStringA(ss.str().c_str());
     }
     class FreeBlock {//空闲块 free block
-
     public:
         FreeBlock()= default;
         FreeBlock(void* _ptr,size_t _size) :size(_size), ptr(_ptr) {}
@@ -918,6 +886,10 @@ namespace stc{
     uintptr_t maxAppAddr = USERADDR_MAX;
     uintptr_t minAppAddr = USERADDR_MIN;
     static SimpleRangeCache<uintptr_t, MEMORY_BASIC_INFORMATION> cache;
+    //virtualqueryex
+    INLINE SIZE_T VirtualQueryExApi(HANDLE hProcess,LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)NOEXCEPT {
+        return VirtualQueryEx(hProcess, lpAddress, lpBuffer, dwLength);//系统的 VirtualQueryEx  system
+    }
     INLINE  SIZE_T VirtualQueryCacheApi(HANDLE hProcess, LPVOID lpAddress, MEMORY_BASIC_INFORMATION* lpMbi) NOEXCEPT {
         if ((uintptr_t)lpAddress > maxAppAddr) return 0;
         auto [result, isHit] = cache.find((uintptr_t)lpAddress);
@@ -926,7 +898,7 @@ namespace stc{
             return sizeof(MEMORY_BASIC_INFORMATION);
         }else {
             SIZE_T ret = 0;
-            if (hProcess && hProcess != INVALID_HANDLE_VALUE) ret = VirtualQueryEx(hProcess, lpAddress, lpMbi, sizeof(MEMORY_BASIC_INFORMATION));
+            if (hProcess && hProcess != INVALID_HANDLE_VALUE) ret = VirtualQueryExApi(hProcess, lpAddress, lpMbi, sizeof(MEMORY_BASIC_INFORMATION));
             if (ret > 0) {
                 uintptr_t start = (uintptr_t)lpMbi->AllocationBase;
                 uintptr_t end = start + lpMbi->RegionSize, Ratio = 1;
@@ -936,12 +908,10 @@ namespace stc{
             return ret;
         }
     }
-    INLINE DWORD VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)NOEXCEPT {
-        return VirtualQueryCacheApi(hProcess, (LPVOID)lpAddress, lpBuffer);//系统的 VirtualQueryEx  system
-    }
     INLINE BOOL VirtualProtectExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)NOEXCEPT {
         return VirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);//系统的 VirtualProtectEx  system
     }
+    
     //空闲块链表 free block list
     class FreeBlockList :public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
         std::deque<FreeBlock> m_freeBlocks;
@@ -983,7 +953,7 @@ namespace stc{
         INLINE void Free(void* ptr, size_t size)NOEXCEPT {
             //查allocatebase    find allocatebase
             MEMORY_BASIC_INFORMATION mbi{};
-            VirtualQueryExApi(m_hProcess, ptr, &mbi, sizeof(mbi));
+            VirtualQueryCacheApi(m_hProcess, ptr, &mbi);
             //查询空闲列表中有没有和allcatebase相同的块 find whether there is a block same as allocatebase in free list
             std::lock_guard<std::mutex> lock(m_mutex);
             auto iter = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](const FreeBlock& block) {return block.ptr == mbi.AllocationBase; });
@@ -1653,6 +1623,21 @@ namespace stc{
                 }
             }
         }
+        template<class T,class ...Args>
+        INLINE void InitObject(LPVOID Instance, Args&&...args) {
+            //分配一个内存空间 allocate memory
+            std::unique_ptr<BYTE[]> p(new BYTE[sizeof(T)]);
+            if constexpr (sizeof...(args)) {
+                new(p.get()) T(std::forward<Args>(args)...);
+            }
+            else {
+                new(p.get()) T();
+            }
+            //构造对象 construct object
+            
+            //写入内存 write to memory
+            _WriteApi(Instance, p.get(), sizeof(T));
+        }
         INLINE void ClearMemory() NOEXCEPT {
             for (auto& p : m_vecAllocMem) p.Release();
             m_vecAllocMem.clear();
@@ -1701,40 +1686,42 @@ namespace stc{
     private:
         template<class T, class ...Arg>
         INLINE decltype(auto) SetContextUndocumentedCallNoReturnImpl(LPVOID lpfunction, __in Arg ...args) {
-            return SetContextCallNoReturn((T)lpfunction, args...);
+            if constexpr (sizeof...(Arg) > 0) {
+                return SetContextCallNoReturn((T)lpfunction, args...);
+            }else {
+                return SetContextCallNoReturn((T)lpfunction);
+            }
+            
         }
-        template<class T>
-        INLINE decltype(auto) SetContextUndocumentedCallNoReturnImpl(LPVOID lpfunction, std::string_view funcname) {
-            return SetContextCallNoReturn((T)lpfunction);
-        }
+
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
         INLINE decltype(auto) SetContextUndocumentedCallImpl(LPVOID lpfunction,__in Arg ...args) {
-            return SetContextCall((T)lpfunction, args...);
+            if constexpr (sizeof...(Arg) > 0) {
+                return SetContextCall((T)lpfunction, args...);
+            }
+            else {
+                return SetContextCall((T)lpfunction);
+            }
         }
-        template<class T>
-        INLINE decltype(auto) SetContextUndocumentedCallImpl(LPVOID lpfunction) {
-            return SetContextCall((T)lpfunction);
-        }
+
         template<class T, class ...Arg>
         INLINE decltype(auto) SetContextExportedCallNoReturnImpl(std::string_view funcname, __in Arg ...args) {
             auto lpfunction = GetRoutine(funcname.data());
-            return SetContextCallNoReturn((T)lpfunction, args...);
-        }
-        template<class T>
-        INLINE decltype(auto) SetContextExportedCallNoReturnImpl(std::string_view funcname) {
-            auto lpfunction = GetRoutine(funcname.data());
-            return SetContextCallNoReturn((T)lpfunction);
+            if constexpr (sizeof...(Arg) > 0) {
+                return SetContextCallNoReturn((T)lpfunction, args...);
+            }else {
+                return SetContextCallNoReturn((T)lpfunction);
+            }
         }
         template<class T, class ...Arg>
         INLINE decltype(auto) SetContextExportedCallImpl(std::string_view funcname, __in Arg ...args) {
             auto lpfunction = GetRoutine(funcname.data());
-            return SetContextCall((T)lpfunction, args...);
-        }
-        template<class T>
-        INLINE decltype(auto) SetContextExportedCallImpl(std::string_view funcname) {
-            auto lpfunction = GetRoutine(funcname.data());
-            return SetContextCall((T)lpfunction);
+            if constexpr (sizeof...(Arg) > 0) {
+                return SetContextCall((T)lpfunction, args...);
+            }else {
+                return SetContextCall((T)lpfunction);
+            }
         }
         template <class _Fn>
         INLINE void SetContextCallNoReturnImpl(_Fn&& _Fx) NOEXCEPT {
