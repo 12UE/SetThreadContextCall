@@ -1127,18 +1127,6 @@ namespace CallBacks{
         std::deque<FreeBlock> m_freeBlocks;
         std::mutex m_mutex;
         using iterator=decltype(m_freeBlocks)::iterator;
-        iterator FindCloest(void* ptr) {
-            //查找最接近的块 find the closest block
-            auto iter = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](const FreeBlock& block) {
-                return (uintptr_t)block.ptr >= (uintptr_t)ptr;
-            });
-            if (iter == m_freeBlocks.end()) {
-                return m_freeBlocks.end();
-            }
-            else {
-                return iter;
-            }
-        }
     public:
         FreeBlockList(HANDLE hprocess = GetCurrentProcess()) : m_head(nullptr) {
             m_hProcess = hprocess;
