@@ -3,7 +3,13 @@ using namespace stc;
 int main() {
     auto &process=Process::GetInstance();
     process.Attach("notepad.exe");
-    process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "OK", "msg", MB_OK);
+    int i = 0;
+    while (true)
+    {
+        process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "OK", "msg", MB_OK);
+        std::cout<< i++ << std::endl;
+    }
+    
 
     
 
