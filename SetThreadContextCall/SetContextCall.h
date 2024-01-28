@@ -1840,17 +1840,6 @@ namespace CallBacks{
                 }
             }
         }
-        template<class T,class ...Args>
-        INLINE void InitObject(LPVOID Instance, Args&&...args) {
-            //分配一个内存空间 allocate memory
-            std::unique_ptr<BYTE[]> p(new BYTE[sizeof(T)]);
-            if constexpr (sizeof...(args)) {
-                new(p.get()) T(std::forward<Args>(args)...);
-            }else {
-                new(p.get()) T();
-            }
-            _WriteApi(Instance, p.get(), sizeof(T));
-        }
         INLINE void ClearMemory() NOEXCEPT {
             for (auto& p : m_vecAllocMem) p.Release();
             m_vecAllocMem.clear();

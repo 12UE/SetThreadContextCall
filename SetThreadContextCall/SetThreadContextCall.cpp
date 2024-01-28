@@ -8,7 +8,7 @@ int main() {
     int i = 0;
     while (true)
     {
-        process.SetContextCall((pFunc)0x142670d82);
+        process.InitObject
         
     }
     
