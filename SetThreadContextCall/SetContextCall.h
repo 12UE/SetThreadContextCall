@@ -1512,6 +1512,8 @@ namespace CallBacks{
         DWORD m_dwThreadId = 0;
         std::atomic_bool m_bAttached = false;
         std::function<HANDLE(DWORD dwDesiredAccess,BOOL,DWORD)> pOpenThread = OpenThread;
+        //关闭句柄的回调
+        std::function<BOOL(HANDLE)> pCloseHandle = CloseHandle;
         std::function<BOOL(HANDLE,LPDWORD)> pGetExitCodeThread = GetExitCodeThread;
         //设置获取线程上下文的回调  set get thread context callback
         std::function<BOOL(HANDLE, LPCONTEXT)> pGetThreadContext = GetThreadContext;
@@ -1539,11 +1541,18 @@ namespace CallBacks{
         DWORD OnResumeThread(HANDLE hThread) {
             if (pResumeThread) return pResumeThread(hThread);
         }
+        void OnCloseHandle(HANDLE hThread) {
+            if (pCloseHandle) pCloseHandle(hThread);
+        }
     public:
         Thread() = default;
         //设置回调
         void SetOpenThreadCallBack(const std::function<HANDLE(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId)>& pCallBack) {
             pOpenThread = pCallBack;
+        }
+        //设置关闭句柄的回调
+        void SetCloseHandleCallBack(const std::function<BOOL(HANDLE)>& pCallBack) {
+            pCloseHandle = pCallBack;
         }
         void Open(DWORD dwThreadId) NOEXCEPT {    //打开线程 open thread
             m_dwThreadId = dwThreadId;
@@ -1567,6 +1576,7 @@ namespace CallBacks{
             pSetThreadContext = other.pSetThreadContext;
             pSuspendThread = other.pSuspendThread;
             pResumeThread = other.pResumeThread;
+            pCloseHandle = other.pCloseHandle;
 
             m_bAttached = Attached;
             other.m_dwThreadId = 0;
@@ -1577,6 +1587,7 @@ namespace CallBacks{
             other.pSetThreadContext = nullptr;
             other.pSuspendThread = nullptr;
             other.pResumeThread = nullptr;
+            other.pCloseHandle = nullptr;
 
             other.m_bAttached = false;
         }
@@ -1592,6 +1603,7 @@ namespace CallBacks{
                 pSetThreadContext = other.pSetThreadContext;
                 pSuspendThread = other.pSuspendThread;
                 pResumeThread = other.pResumeThread;
+                pCloseHandle = other.pCloseHandle;
 
                 m_bAttached = Attached;
                 //删除目标的回调函数指针 delete target callback function pointer
@@ -1600,6 +1612,7 @@ namespace CallBacks{
                 other.pGetThreadContext = nullptr;
                 other.pSetThreadContext = nullptr;
                 other.pSuspendThread = nullptr;
+                other.pResumeThread = nullptr;
                 
                 other.m_dwThreadId = 0;
                 other.m_bAttached = false;
@@ -1608,9 +1621,7 @@ namespace CallBacks{
         }
         ~Thread() NOEXCEPT {
             if (m_bAttached) {
-#ifndef DRIVER_MODE
-                CloseHandle(m_GenericHandleThread);
-#endif
+                OnCloseHandle(m_GenericHandleThread);
             }
         }
         HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }//获取线程句柄  get thread handle
