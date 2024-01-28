@@ -8,7 +8,7 @@ int main() {
     int i = 0;
     while (true)
     {
-        process.
+        std::cout<<process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "OK", MB_OK).get();
         
     }
     

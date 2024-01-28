@@ -1400,24 +1400,6 @@ namespace CallBacks{
             return threadData->retdata;
         }
     }    
-    template <class Fn, class T, class... Args>
-    void ThreadFunction2(void* param) noexcept {
-        auto threadData = Create<Fn, T, Args...>(param);
-         if constexpr (!std::is_same_v<T, void>&& sizeof...(Args) > 0) {
-            [threadData] (auto index) NOEXCEPT{
-               std::apply(threadData->fn, threadData->params);
-            }(std::make_index_sequence<sizeof...(Args)>{});
-            }
-        auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
-        auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        auto ntdll = pLoadLibrary(threadData->funcname[0]);
-        auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);        //加载OpenEventA    load OpenEventA
-        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);        //打开事件  open event
-        auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);       //设置事件  set event
-        pSetEvent(hEventHandle);
-        auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
-        pCloseHandle(hEventHandle);
-    }
     //代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
     typedef class DATA_CONTEXT {
     public:
