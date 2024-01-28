@@ -1560,8 +1560,24 @@ namespace CallBacks{
             m_GenericHandleThread = std::move(other.m_GenericHandleThread);
             m_dwThreadId = other.m_dwThreadId;
             bool Attached = other.m_bAttached;
+            //把目标的回调函数指针赋值给当前对象 assign target callback function pointer to current object
+            pOpenThread = other.pOpenThread;
+            pGetExitCodeThread = other.pGetExitCodeThread;
+            pGetThreadContext = other.pGetThreadContext;
+            pSetThreadContext = other.pSetThreadContext;
+            pSuspendThread = other.pSuspendThread;
+            pResumeThread = other.pResumeThread;
+
             m_bAttached = Attached;
             other.m_dwThreadId = 0;
+            //删除目标的回调函数指针 delete target callback function pointer
+            other.pOpenThread = nullptr;
+            other.pGetExitCodeThread = nullptr;
+            other.pGetThreadContext = nullptr;
+            other.pSetThreadContext = nullptr;
+            other.pSuspendThread = nullptr;
+            other.pResumeThread = nullptr;
+
             other.m_bAttached = false;
         }
         Thread& operator=(Thread&& other) NOEXCEPT {    //移动赋值 move assignment
@@ -1569,7 +1585,22 @@ namespace CallBacks{
                 m_GenericHandleThread = std::move(other.m_GenericHandleThread);
                 m_dwThreadId = other.m_dwThreadId;
                 bool Attached = other.m_bAttached;
+                //把目标的回调函数指针赋值给当前对象 assign target callback function pointer to current object
+                pOpenThread = other.pOpenThread;
+                pGetExitCodeThread = other.pGetExitCodeThread;
+                pGetThreadContext = other.pGetThreadContext;
+                pSetThreadContext = other.pSetThreadContext;
+                pSuspendThread = other.pSuspendThread;
+                pResumeThread = other.pResumeThread;
+
                 m_bAttached = Attached;
+                //删除目标的回调函数指针 delete target callback function pointer
+                other.pOpenThread = nullptr;
+                other.pGetExitCodeThread = nullptr;
+                other.pGetThreadContext = nullptr;
+                other.pSetThreadContext = nullptr;
+                other.pSuspendThread = nullptr;
+                
                 other.m_dwThreadId = 0;
                 other.m_bAttached = false;
             }
