@@ -74,6 +74,12 @@ namespace CallBacks{
     std::function<DWORD(HANDLE,DWORD)> pWaitForSingleObject=WaitForSingleObject;
     //关闭句柄的回调函数
     std::function<void(HANDLE&)> pCloseHandle=CloseHandle;
+    //创建线程快照的回调函数
+    std::function<HANDLE(DWORD,DWORD)> pCreateToolhelp32Snapshot=CreateToolhelp32Snapshot;
+    //找到第一个线程的回调函数
+    std::function<BOOL(HANDLE,LPTHREADENTRY32)> pThread32First=Thread32First;
+    //找到下一个线程的回调函数
+    std::function<BOOL(HANDLE,LPTHREADENTRY32)> pThread32Next=Thread32Next;
 }
     DWORD OnWaitForSingleObject(HANDLE handle,DWORD time){
         return CallBacks::pWaitForSingleObject(handle,time);
@@ -81,13 +87,38 @@ namespace CallBacks{
     void OnCloseHandle(HANDLE& handle){
         CallBacks::pCloseHandle(handle);
     }
+    //创建线程快照
+    HANDLE OnCreateToolhelp32Snapshot(DWORD dwFlags,DWORD th32ProcessID){
+        return CallBacks::pCreateToolhelp32Snapshot(dwFlags,th32ProcessID);
+    }
+    BOOL OnThread32First(HANDLE hSnapshot,LPTHREADENTRY32 lpte){
+        return CallBacks::pThread32First(hSnapshot,lpte);
+    }
+    BOOL OnThread32Next(HANDLE hSnapshot,LPTHREADENTRY32 lpte){
+        return CallBacks::pThread32Next(hSnapshot,lpte);
+    }
     //设置WaitForSingleObject的回调函数
     void SetWaitForSingleObjectCallBack(std::function<DWORD(HANDLE,DWORD)> func){
         CallBacks::pWaitForSingleObject=func;
     }
+    //设置CloseHandle的回调函数
+    void SetCloseHandleCallBack(std::function<void(HANDLE&)> func){
+        CallBacks::pCloseHandle=func;
+    }
     //设置VirtualProtectEx的回调函数
     void SetVirtualProtectExCallBack(std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> func){
         CallBacks::pVirtualProtectExCallBack=func;
+    }
+    //线程快照的回调函数
+    void SetThread32FirstCallBack(std::function<BOOL(HANDLE,LPTHREADENTRY32)> func){
+        CallBacks::pThread32First=func;
+    }
+    void SetThread32NextCallBack(std::function<BOOL(HANDLE,LPTHREADENTRY32)> func){
+        CallBacks::pThread32Next=func;
+    }
+    //创建线程的回调函数
+    void SetCreateToolhelp32Snapshot(std::function<HANDLE(DWORD, DWORD)> func){
+        CallBacks::pCreateToolhelp32Snapshot=func;
     }
     #define INLINE inline   //内联 inline
     #define NOEXCEPT noexcept   //不抛出异常 no throw exception
@@ -1814,9 +1845,9 @@ namespace CallBacks{
         template<class PRE>
         INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
             if (m_bAttached) {
-                GenericHandle<HANDLE, NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                GenericHandle<HANDLE, NormalHandle> hSnapshot = OnCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
                 THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
-                for (auto bRet = Thread32First(hSnapshot, &threadEntry); bRet&& hSnapshot; bRet = Thread32Next(hSnapshot, &threadEntry)) {
+                for (auto bRet = OnThread32First(hSnapshot, &threadEntry); bRet&& hSnapshot; bRet = OnThread32Next(hSnapshot, &threadEntry)) {
                     if (threadEntry.th32OwnerProcessID == m_pid) {
                         Thread thread{};
                         thread.Open(threadEntry);
