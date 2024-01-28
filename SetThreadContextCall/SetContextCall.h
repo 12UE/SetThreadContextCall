@@ -793,18 +793,9 @@ namespace CallBacks{
             std::unique_lock<std::mutex> lock(m_mutex);//上锁为了防止多线程同时插入map lock for prevent multi thread insert map at the same time
             pidlist.emplace(std::make_pair(processName, pid));
             _pid = pid;
-    }
+        }
         else {
             _pid = it->second;
-        }
-        //获取现在的时间单位是毫秒 get current time unit is millisecond
-        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        static auto lasttime = now;
-        //如果上次获取时间和现在时间相差大于1000毫秒，就清除pidlist，重新获取进程id if last time and now time difference is greater than 1000 millisecond, clear pidlist and get process id again
-        if (now - lasttime > 1000) {
-            std::unique_lock<std::mutex> lock(m_mutex);
-            pidlist.clear();
-            lasttime = now;
         }
         return _pid;
     }
