@@ -1111,7 +1111,7 @@ namespace CallBacks{
         static auto OnVirtualProtectEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)->bool {
             return CallBacks::pVirtualProtectExCallBack(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
         };
-        return OnVirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect); 
+        return OnVirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
     }
     //空闲块链表 free block list
     class FreeBlockList :public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
@@ -1342,24 +1342,11 @@ namespace CallBacks{
     };
     #pragma pack(pop)//恢复原始pack restore original pack   
     //定义函数指针 define function pointer
-    typedef HMODULE(WINAPI* PLOADLIBRARYA)(
-        LPCSTR lpLibFileName
-        );
-    typedef FARPROC(WINAPI* PGETPROCADDRESS)(
-        HMODULE hModule,
-        LPCSTR  lpProcName
-        );
-    typedef HANDLE(WINAPI* POPENEVENTA)(
-        DWORD dwDesiredAccess,
-        BOOL bInheritHandle,
-        LPCSTR lpName
-        );
-    typedef BOOL(WINAPI* PSETEVENT)(
-        HANDLE hEvent
-        );
-    typedef BOOL(WINAPI* PCLOSEHANDLE)(
-        HANDLE hObject
-        );
+    typedef HMODULE(WINAPI* PLOADLIBRARYA)(LPCSTR lpLibFileName);
+    typedef FARPROC(WINAPI* PGETPROCADDRESS)(HMODULE hModule,LPCSTR  lpProcName);
+    typedef HANDLE(WINAPI* POPENEVENTA)(DWORD dwDesiredAccess,BOOL bInheritHandle,LPCSTR lpName);
+    typedef BOOL(WINAPI* PSETEVENT)(HANDLE hEvent);
+    typedef BOOL(WINAPI* PCLOSEHANDLE)(HANDLE hObject);
     template<class Fn,class T,class ...Arg>
     AUTOTYPE InstancePtr(void* param) {
         if constexpr (sizeof...(Arg)>0) {
@@ -1368,13 +1355,30 @@ namespace CallBacks{
             return static_cast<ThreadData2<Fn, T, Arg...>*>(param);
         }
     }
-    template <class Fn, class T>//FN是函数T是返回值
+    template<class Fn, class RetType, class ...Arg>
+    INLINE AUTOTYPE Create(void* param) {
+        if constexpr (sizeof...(Arg) > 0) {
+            return static_cast<ThreadData2<Fn, RetType, Arg...>*>(param);
+        }else {
+            return static_cast<ThreadData<Fn, RetType>*>(param);
+        }
+    }
+    template <class Fn, class T,class ...Args>//FN是函数T是返回值
     AUTOTYPE ThreadFunction(void* param) noexcept {
-        auto threadData = static_cast<ThreadData<Fn, T>*>(param);
+        auto threadData = Create<Fn, T,Args...>(param);
         if constexpr (std::is_same_v<T, void>) {
             threadData->fn();
         }else {
-            threadData->retdata = threadData->fn();
+            threadData->retdata = [threadData](auto index) NOEXCEPT{
+                using RetType = decltype(threadData->retdata);
+                RetType ret{};
+                if constexpr (sizeof...(Args) > 0) {
+                    ret = std::apply(threadData->fn, threadData->params);
+                }else {
+                    ret=threadData->fn();
+                }
+            return ret;
+            }(std::make_index_sequence<sizeof...(Args)>{});
         }
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
@@ -1389,46 +1393,15 @@ namespace CallBacks{
         if constexpr (!std::is_same_v<T, void>) {
             return threadData->retdata;
         }
-    }
-    template <class Fn, class T>
-    void ThreadFunctionNoReturn(void* param) noexcept {
-        auto threadData = static_cast<ThreadData<Fn, T>*>(param);
-        threadData->fn();
-        auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
-        auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        auto ntdll = pLoadLibrary(threadData->funcname[0]);
-        auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);    //加载OpenEventA    load OpenEventA
-        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);    //打开事件  open event
-        auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);    //设置事件  set event
-        pSetEvent(hEventHandle);
-        auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
-        pCloseHandle(hEventHandle);
-    }
-    template <class Fn, class T, class... Args>
-    AUTOTYPE ThreadFunction2(void* param) noexcept {
-        auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
-        auto ret = [threadData](auto index) NOEXCEPT{
-            threadData->retdata = std::apply(threadData->fn, threadData->params);
-            return threadData->retdata;
-        }(std::make_index_sequence<sizeof...(Args)>{});
-        auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
-        auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        auto ntdll = pLoadLibrary(threadData->funcname[0]);
-        auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);        //加载OpenEventA    load OpenEventA
-        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);        //打开事件  open event
-        auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);        //设置事件  set event
-        pSetEvent(hEventHandle);
-        auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
-        pCloseHandle(hEventHandle);
-        return ret;
-    }
+    }    
     template <class Fn, class T, class... Args>
     void ThreadFunction2NoReturn(void* param) noexcept {
-        auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
-        //auto threadData = InstancePtr< Fn, T, Args... >(param);
-        [threadData] (auto index) NOEXCEPT{
-            std::apply(threadData->fn, threadData->params);
-        }(std::make_index_sequence<sizeof...(Args)>{});
+        auto threadData = Create<Fn, T, Args...>(param);
+         if constexpr (!std::is_same_v<T, void>&& sizeof...(Args) > 0) {
+            [threadData] (auto index) NOEXCEPT{
+               std::apply(threadData->fn, threadData->params);
+            }(std::make_index_sequence<sizeof...(Args)>{});
+        }
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
         auto ntdll = pLoadLibrary(threadData->funcname[0]);
@@ -1973,52 +1946,6 @@ namespace CallBacks{
             };
             return OnReadProcessMemory(m_hProcess, lpBaseAddress, lpbuffer, nSize,retsize);
         }
-        template <class _Fn>
-        INLINE void SetContextCallNoReturnImpl(_Fn&& _Fx) NOEXCEPT {
-            using RetType = void;
-            uintptr_t _paramAddr = 0;
-            ThreadData<std::decay_t<_Fn>, RetType> threadData;//thread data 线程数据
-            strcpy_s(threadData.eventname, xor_str("SetContextCallImpl"));//event name   事件名
-            strcpy_s(threadData.funcname[0], xor_str("kernel32.dll"));//kernel32.dll
-            strcpy_s(threadData.funcname[1], xor_str("OpenEventA"));//OpenEventA
-            strcpy_s(threadData.funcname[2], xor_str("SetEvent"));//SetEvent
-            strcpy_s(threadData.funcname[3], xor_str("CloseHandle"));//CloseHandle
-            //创建事件  create event
-            GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-            if (hEvent) {
-                threadData.pFunc[0] = (LPVOID)LoadLibraryA;
-                threadData.pFunc[1] = (LPVOID)GetProcAddress;
-                EnumThread([&](auto& thread)->EnumStatus {
-                    thread.Suspend();//suspend thread   暂停线程
-                    auto ctx = thread.GetContext();//get context    获取上下文
-                    auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
-                    m_vecAllocMem.emplace_back(lpShell);//push back to vector for free memory   push back到vector中以释放内存
-                    DATA_CONTEXT dataContext{};
-                    memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-                    threadData.fn = _Fx;
-                    auto pFunction = &ThreadFunctionNoReturn<std::decay_t<_Fn>, RetType>;//get function address 获取函数地址
-                    auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
-                    auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
-                    m_vecAllocMem.emplace_back(lpFunction);
-                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存  
-                    dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address
-                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
-                    using parametertype = decltype(threadData);//get parameter type 获取参数类型
-                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
-                    m_vecAllocMem.emplace_back(lpParameter);
-                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter to memory    写入参数到内存
-                    dataContext.lpParameter = (PBYTE)lpParameter.raw();
-                    _paramAddr = (uintptr_t)lpParameter.raw();
-                    ctx.XIP = (uintptr_t)lpShell.raw();//set xip    设置xip
-                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext to memory  写入datacontext到内存
-                    thread.SetContext(ctx);//set context    设置上下文
-                    thread.Resume();//resume thread 恢复线程
-                    return EnumStatus::Break;
-                    });
-                hEvent.Wait(INFINITE);//wait event  等待事件
-                ClearMemory();
-            }
-        }
         template<class _Fn, class ...Arg>
         INLINE void SetContextCallNoReturnImpl(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
             using RetType = void;
@@ -2066,12 +1993,11 @@ namespace CallBacks{
                     return EnumStatus::Break;
                     });
                 hEvent.Wait(INFINITE);//wait event
-                if (maptoorigin.size() > 0)postprocess(args...);//post process parameter    后处理参数
+                if (maptoorigin.size() > 0) if constexpr (sizeof...(Arg)>0)postprocess(args...);//post process parameter    后处理参数
                 ClearMemory();
                 maptoorigin.clear();//clear map
             }
         }
-
         template<class _Fn, class ...Arg>
         AUTOTYPE SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
             using RetType=std::common_type<decltype(_Fx(args...))>::type;//return type is common type or not
@@ -2098,12 +2024,7 @@ namespace CallBacks{
                     if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter  处理参数
                     threadData.fn = _Fx;
                     if constexpr(sizeof...(Arg)>0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
-                    LPVOID pFunction = nullptr;
-                    if constexpr (sizeof...(Arg) > 0) {
-                        pFunction = &ThreadFunction2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;
-                    }else {
-                        pFunction = &ThreadFunction<_Fn, RetType>;//get function address 获取函数地址
-                    }
+                    auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;
                     //get function address  获取函数地址
                     auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
                     auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
@@ -2122,7 +2043,7 @@ namespace CallBacks{
                     thread.SetContext(ctx);//set context    设置上下文
                     thread.Resume();//resume thread   恢复线程
                     return EnumStatus::Break;
-                    });
+                });
                 hEvent.Wait(INFINITE);//wait event  等待事件
                 if (maptoorigin.size() > 0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
                 _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值

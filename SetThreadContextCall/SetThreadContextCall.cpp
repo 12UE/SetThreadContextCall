@@ -6,8 +6,8 @@ int main() {
     int i = 0;
     while (true)
     {
-        process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "OK", "msg", MB_OK);
-        std::cout<< i++ << std::endl;
+        process.SetContextCallNoReturn(GetCurrentProcessId);
+        
     }
     
 
