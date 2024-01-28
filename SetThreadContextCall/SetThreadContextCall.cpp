@@ -8,7 +8,7 @@ int main() {
     int i = 0;
     while (true)
     {
-        process.InitObject
+        process.
         
     }
     

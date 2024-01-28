@@ -1827,23 +1827,7 @@ namespace CallBacks{
             }
             return 0;
         }
-        template<class PRE>
-        INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
-            if (m_bAttached) {
-                GenericHandle<HANDLE, NormalHandle> hSnapshot = OnCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-                THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
-                for (auto bRet = OnThread32First(hSnapshot, &threadEntry); bRet&& hSnapshot; bRet = OnThread32Next(hSnapshot, &threadEntry)) {
-                    if (threadEntry.th32OwnerProcessID == m_pid) {
-                        Thread thread(threadEntry);
-                        if (thread && pre(thread) == EnumStatus::Break)break;
-                    }
-                }
-            }
-        }
-        INLINE void ClearMemory() NOEXCEPT {
-            for (auto& p : m_vecAllocMem) p.Release();
-            m_vecAllocMem.clear();
-        }
+        
         template <typename T>
         struct is_callable {
             template <typename U>
@@ -1884,6 +1868,23 @@ namespace CallBacks{
             pReadProcessMemoryCallBack = pCallBack;
         }
     private:
+        template<class PRE>
+        INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
+            if (m_bAttached) {
+                GenericHandle<HANDLE, NormalHandle> hSnapshot = OnCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
+                for (auto bRet = OnThread32First(hSnapshot, &threadEntry); bRet && hSnapshot; bRet = OnThread32Next(hSnapshot, &threadEntry)) {
+                    if (threadEntry.th32OwnerProcessID == m_pid) {
+                        Thread thread(threadEntry);
+                        if (thread && pre(thread) == EnumStatus::Break)break;
+                    }
+                }
+            }
+        }
+        INLINE void ClearMemory() NOEXCEPT {
+            for (auto& p : m_vecAllocMem) p.Release();
+            m_vecAllocMem.clear();
+        }
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextUndocumentedCallImpl(LPVOID lpfunction, __in Arg ...args) {
             SetContextCallImpl((T)lpfunction, args...);
