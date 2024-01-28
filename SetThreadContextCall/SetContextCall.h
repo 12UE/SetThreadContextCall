@@ -1944,14 +1944,8 @@ namespace CallBacks{
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
         INLINE AUTOTYPE SetContextUndocumentedCallImpl(LPVOID lpfunction,__in Arg ...args) {
-            if constexpr (sizeof...(Arg) > 0) {
-                return SetContextCall((T)lpfunction, args...);
-            }
-            else {
-                return SetContextCall((T)lpfunction);
-            }
+            return SetContextCall((T)lpfunction, args...);
         }
-
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCallNoReturnImpl(std::string_view funcname, __in Arg ...args) {
             auto lpfunction = GetRoutine(funcname.data());
@@ -1964,11 +1958,7 @@ namespace CallBacks{
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCallImpl(std::string_view funcname, __in Arg ...args) {
             auto lpfunction = GetRoutine(funcname.data());
-            if constexpr (sizeof...(Arg) > 0) {
-                return SetContextCall((T)lpfunction, args...);
-            }else {
-                return SetContextCall((T)lpfunction);
-            }
+            return SetContextCall((T)lpfunction, args...);
         }
         template<class Fn, class RetType, class ...Arg>
         INLINE AUTOTYPE Create() {
