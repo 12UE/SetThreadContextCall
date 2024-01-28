@@ -1577,7 +1577,6 @@ namespace CallBacks{
             pSuspendThread = other.pSuspendThread;
             pResumeThread = other.pResumeThread;
             pCloseHandle = other.pCloseHandle;
-
             m_bAttached = Attached;
             other.m_dwThreadId = 0;
             //删除目标的回调函数指针 delete target callback function pointer
@@ -1588,7 +1587,6 @@ namespace CallBacks{
             other.pSuspendThread = nullptr;
             other.pResumeThread = nullptr;
             other.pCloseHandle = nullptr;
-
             other.m_bAttached = false;
         }
         Thread& operator=(Thread&& other) NOEXCEPT {    //移动赋值 move assignment
