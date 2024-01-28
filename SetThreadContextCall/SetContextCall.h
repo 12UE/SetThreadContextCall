@@ -1367,7 +1367,13 @@ namespace CallBacks{
     AUTOTYPE ThreadFunction(void* param) noexcept {
         auto threadData = Create<Fn, T,Args...>(param);
         if constexpr (std::is_same_v<T, void>) {
-            threadData->fn();
+            [threadData](auto index) NOEXCEPT{
+                if constexpr (sizeof...(Args) > 0) {
+                    std::apply(threadData->fn, threadData->params);
+                }else {
+                    threadData->fn();
+                }
+            }(std::make_index_sequence<sizeof...(Args)>{});
         }else {
             threadData->retdata = [threadData](auto index) NOEXCEPT{
                 using RetType = decltype(threadData->retdata);
@@ -1375,9 +1381,9 @@ namespace CallBacks{
                 if constexpr (sizeof...(Args) > 0) {
                     ret = std::apply(threadData->fn, threadData->params);
                 }else {
-                    ret=threadData->fn();
+                    ret =threadData->fn();
                 }
-            return ret;
+                return ret;
             }(std::make_index_sequence<sizeof...(Args)>{});
         }
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
@@ -1401,7 +1407,7 @@ namespace CallBacks{
             [threadData] (auto index) NOEXCEPT{
                std::apply(threadData->fn, threadData->params);
             }(std::make_index_sequence<sizeof...(Args)>{});
-        }
+            }
         auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
         auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
         auto ntdll = pLoadLibrary(threadData->funcname[0]);
@@ -1857,20 +1863,20 @@ namespace CallBacks{
             static std::false_type test(...);
             static constexpr bool value = decltype(test<T>(nullptr))::value;//is callable
         };
-        template<class _Fn, class ...Arg>
-        INLINE void SetContextCallNoReturn(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
-            static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
-            SetContextCallNoReturnImpl(_Fx, args...);//返回值保存到retdata return value save to retdata
-        }
+        
         INLINE AUTOTYPE SetContextCall(auto&& _Fx, auto&& ...args) NOEXCEPT {
             static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
-            auto retdata = SetContextCallImpl(_Fx, args...);//返回值保存到retdata return value save to retdata
-            using RetType = decltype(retdata);
-            std::promise<RetType> promise{};//承诺对象
-            std::future<RetType> fut = promise.get_future();
-            promise.set_value(retdata);//设置承诺值 set promise value
-            
-            return fut;
+            //获得函数体的返回值
+            using RetType = decltype(_Fx(args...));
+            if constexpr(!std::is_same_v<RetType,void>){
+                auto retdata = SetContextCallImpl(_Fx, args...);//返回值保存到retdata return value save to retdata
+                std::promise<RetType> promise{};//承诺对象
+                std::future<RetType> fut = promise.get_future();
+                promise.set_value(retdata);//设置承诺值 set promise value
+                return fut;
+            }else{
+                SetContextCallImpl(_Fx, args...);
+            }
         }
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCall(std::string_view funcname, __in Arg ...args) {
@@ -1899,11 +1905,7 @@ namespace CallBacks{
     private:
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextUndocumentedCallNoReturnImpl(LPVOID lpfunction, __in Arg ...args) {
-            if constexpr (sizeof...(Arg) > 0) {
-                return SetContextCallNoReturn((T)lpfunction, args...);
-            }else {
-                return SetContextCallNoReturn((T)lpfunction);
-            }
+            SetContextCallImpl((T)lpfunction, args...);
         }
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
@@ -1913,11 +1915,7 @@ namespace CallBacks{
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCallNoReturnImpl(std::string_view funcname, __in Arg ...args) {
             auto lpfunction = GetRoutine(funcname.data());
-            if constexpr (sizeof...(Arg) > 0) {
-                return SetContextCallNoReturn((T)lpfunction, args...);
-            }else {
-                return SetContextCallNoReturn((T)lpfunction);
-            }
+            return SetContextCall((T)lpfunction, args...);
         }
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCallImpl(std::string_view funcname, __in Arg ...args) {
@@ -1947,60 +1945,8 @@ namespace CallBacks{
             return OnReadProcessMemory(m_hProcess, lpBaseAddress, lpbuffer, nSize,retsize);
         }
         template<class _Fn, class ...Arg>
-        INLINE void SetContextCallNoReturnImpl(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
-            using RetType = void;
-            if (!m_bAttached) return RetType();
-            uintptr_t _paramAddr = 0;
-            ThreadData2<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...> threadData;
-            strcpy_s(threadData.eventname, xor_str("SetContextCallImpl"));//event name   事件名
-            strcpy_s(threadData.funcname[0], xor_str("kernel32.dll"));//kernel32.dll
-            strcpy_s(threadData.funcname[1], xor_str("OpenEventA"));//OpenEventA
-            strcpy_s(threadData.funcname[2], xor_str("SetEvent"));//SetEvent
-            strcpy_s(threadData.funcname[3], xor_str("CloseHandle"));//CloseHandle
-            //创建事件
-            GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-            if (hEvent) {
-                //设置函数地址
-                threadData.pFunc[0] = (LPVOID)LoadLibraryA;
-                threadData.pFunc[1] = (LPVOID)GetProcAddress;
-                EnumThread([&](auto& thread)->EnumStatus {
-                    thread.Suspend();//suspend thread   暂停线程
-                    auto ctx = thread.GetContext();//get context    获取上下文
-                    auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory   分配内存
-                    m_vecAllocMem.emplace_back(lpShell);//
-                    DATA_CONTEXT dataContext{};
-                    memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-                    if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter  处理参数
-                    threadData.fn = _Fx;
-                    threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
-                    auto pFunction = &ThreadFunction2NoReturn<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;//get function address  获取函数地址
-                    int length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
-                    auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
-                    m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
-                    _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到内存
-                    dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address 设置函数地址
-                    dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
-                    using parametertype = decltype(threadData);
-                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
-                    m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
-                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
-                    dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
-                    _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address   设置参数地址
-                    ctx.XIP = (uintptr_t)lpShell.raw();//set xip
-                    _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写入datacontext
-                    thread.SetContext(ctx);//set context    设置上下文
-                    thread.Resume();//resume thread  恢复线程
-                    return EnumStatus::Break;
-                    });
-                hEvent.Wait(INFINITE);//wait event
-                if (maptoorigin.size() > 0) if constexpr (sizeof...(Arg)>0)postprocess(args...);//post process parameter    后处理参数
-                ClearMemory();
-                maptoorigin.clear();//clear map
-            }
-        }
-        template<class _Fn, class ...Arg>
         AUTOTYPE SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
-            using RetType=std::common_type<decltype(_Fx(args...))>::type;//return type is common type or not
+            using RetType=decltype(_Fx(args...));//return type is common type or not
             if (!m_bAttached) return RetType();
             uintptr_t _paramAddr = 0;
             auto threadData = Create<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
@@ -2049,7 +1995,9 @@ namespace CallBacks{
                 _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
                 ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
                 maptoorigin.clear();//clear map  清除map
-                return threadData.retdata;//return value    返回值
+                if constexpr (!std::is_same_v<RetType, void>) {
+                    return threadData.retdata;//return value    返回值
+                }
             }
         }   
     };
