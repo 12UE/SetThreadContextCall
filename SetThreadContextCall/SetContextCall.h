@@ -1127,15 +1127,18 @@ namespace CallBacks{
         std::deque<FreeBlock> m_freeBlocks;
         std::mutex m_mutex;
         using iterator=decltype(m_freeBlocks)::iterator;
+        std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
+        FreeBlock* m_head;
+        GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;
     public:
         FreeBlockList(HANDLE hprocess = GetCurrentProcess()) : m_head(nullptr) {
             m_hProcess = hprocess;
         }
         ~FreeBlockList() {//当析构时释放所有空闲块 free all free block when destruct
-            std::lock_guard<std::mutex> lock(m_mutex);
             for (auto& item: m_freeBlocks){
                 if (m_hProcess) VirtualFreeExApi(m_hProcess, item.ptr, item.size, MEM_DECOMMIT);
             }
+            std::lock_guard<std::mutex> lock(m_mutex);
             m_freeBlocks.clear();
         }
         INLINE void Add(void* ptr, size_t size) NOEXCEPT {//加入一个空闲块 add a free block
@@ -1208,10 +1211,6 @@ namespace CallBacks{
             Free(ptr, it->second);
             g_allocMap.erase(it);
         }
-    private:
-        std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
-        FreeBlock* m_head;
-        GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;//HandleView 句柄视图,不负责关闭句柄 HandleView handle view,not responsible for closing handle
     };
     INLINE void* mallocex(HANDLE hProcess, size_t size) {
         void* ptr=FreeBlockList::GetInstance(hProcess).mallocex(size);//调用单例模式的函数 call singleton function
@@ -1496,7 +1495,7 @@ namespace CallBacks{
     };
     #endif
     class Thread {//把线程当做对象来处理  process thread as object
-        HANDLE m_GenericHandleThread;//采用智能句柄  use smart handle//可以是内核的句柄 can be kernel handle
+        GenericHandle<HANDLE,NormalHandle> m_GenericHandleThread;//采用智能句柄  use smart handle//可以是内核的句柄 can be kernel handle
         DWORD m_dwThreadId = 0;
         std::atomic_bool m_bAttached = false;
         std::function<HANDLE(DWORD dwDesiredAccess,BOOL,DWORD)> pOpenThread = OpenThread;
@@ -1529,25 +1528,18 @@ namespace CallBacks{
         DWORD OnResumeThread(HANDLE hThread) {
             if (pResumeThread) return pResumeThread(hThread);
         }
-        void OnCloseHandle(HANDLE hThread) {
-            if (pCloseHandle) pCloseHandle(hThread);
-        }
     public:
         Thread() = default;
         //设置回调
         void SetOpenThreadCallBack(const std::function<HANDLE(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId)>& pCallBack) {
             pOpenThread = pCallBack;
         }
-        //设置关闭句柄的回调
-        void SetCloseHandleCallBack(const std::function<BOOL(HANDLE)>& pCallBack) {
-            pCloseHandle = pCallBack;
-        }
-        void Open(DWORD dwThreadId) NOEXCEPT {    //打开线程 open thread
+        Thread(DWORD dwThreadId) NOEXCEPT {    //打开线程 open thread
             m_dwThreadId = dwThreadId;
             m_GenericHandleThread = OnOpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
             if (m_GenericHandleThread)m_bAttached = true;
         }
-        void Open(const THREADENTRY32& threadEntry) NOEXCEPT {    //打开线程 open thread
+        Thread(const THREADENTRY32& threadEntry) NOEXCEPT {    //打开线程 open thread
             m_dwThreadId = threadEntry.th32ThreadID;
             m_GenericHandleThread = OnOpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
             if (m_GenericHandleThread)m_bAttached = true;
@@ -1590,7 +1582,6 @@ namespace CallBacks{
                 pSuspendThread = other.pSuspendThread;
                 pResumeThread = other.pResumeThread;
                 pCloseHandle = other.pCloseHandle;
-
                 m_bAttached = Attached;
                 //删除目标的回调函数指针 delete target callback function pointer
                 other.pOpenThread = nullptr;
@@ -1599,16 +1590,12 @@ namespace CallBacks{
                 other.pSetThreadContext = nullptr;
                 other.pSuspendThread = nullptr;
                 other.pResumeThread = nullptr;
-                
                 other.m_dwThreadId = 0;
                 other.m_bAttached = false;
             }
             return *this;
         }
         ~Thread() NOEXCEPT {
-            if (m_bAttached) {
-                OnCloseHandle(m_GenericHandleThread);
-            }
         }
         HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }//获取线程句柄  get thread handle
         operator bool() { return IsRunning(); }
@@ -1877,9 +1864,8 @@ namespace CallBacks{
                 THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
                 for (auto bRet = OnThread32First(hSnapshot, &threadEntry); bRet&& hSnapshot; bRet = OnThread32Next(hSnapshot, &threadEntry)) {
                     if (threadEntry.th32OwnerProcessID == m_pid) {
-                        Thread thread{};
-                        thread.Open(threadEntry);
-                        if (thread && pre(threadEntry) == EnumStatus::Break)break;
+                        Thread thread(threadEntry);
+                        if (thread && pre(thread) == EnumStatus::Break)break;
                     }
                 }
             }
@@ -2021,9 +2007,7 @@ namespace CallBacks{
             if (hEvent) {
                 threadData.pFunc[0] = (LPVOID)LoadLibraryA;
                 threadData.pFunc[1] = (LPVOID)GetProcAddress;
-                EnumThread([&](auto& te32)->EnumStatus {
-                    Thread thread{};
-                    thread.Open(te32);
+                EnumThread([&](auto& thread)->EnumStatus {
                     thread.Suspend();//suspend thread   暂停线程
                     auto ctx = thread.GetContext();//get context    获取上下文
                     auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory for datacontext   分配内存
@@ -2071,9 +2055,7 @@ namespace CallBacks{
                 //设置函数地址
                 threadData.pFunc[0] = (LPVOID)LoadLibraryA;
                 threadData.pFunc[1] = (LPVOID)GetProcAddress;
-                EnumThread([&](auto& te32)->EnumStatus {
-                    Thread thread{};
-                    thread.Open(te32);
+                EnumThread([&](auto& thread)->EnumStatus {
                     thread.Suspend();//suspend thread   暂停线程
                     auto ctx = thread.GetContext();//get context    获取上下文
                     auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory   分配内存
@@ -2125,9 +2107,7 @@ namespace CallBacks{
             if (hEvent) {
                 threadData.pFunc[0] = (LPVOID)LoadLibraryA;
                 threadData.pFunc[1] = (LPVOID)GetProcAddress;
-                EnumThread([&](auto& te32)->EnumStatus {
-                    Thread thread{};
-                    thread.Open(te32);
+                EnumThread([&](auto& thread)->EnumStatus {
                     thread.Suspend();//suspend thread   暂停线程
                     auto ctx = thread.GetContext();//get context    获取上下文
                     auto lpShell = make_Shared<DATA_CONTEXT>(1, m_hProcess);//allocate memory   分配内存
@@ -2169,8 +2149,7 @@ namespace CallBacks{
                 maptoorigin.clear();//clear map  清除map
                 return threadData.retdata;//return value    返回值
             }
-        }
-        
+        }   
     };
 }
 
