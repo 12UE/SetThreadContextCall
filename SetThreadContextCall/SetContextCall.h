@@ -1552,7 +1552,7 @@ namespace CallBacks{
         }
         void Open(const THREADENTRY32& threadEntry) NOEXCEPT {    //打开线程 open thread
             m_dwThreadId = threadEntry.th32ThreadID;
-            m_GenericHandleThread = OpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+            m_GenericHandleThread = OnOpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
             if (m_GenericHandleThread)m_bAttached = true;
             if (m_GenericHandleThread)m_bAttached = true;
         }
