@@ -707,7 +707,7 @@ namespace CallBacks{
         if (!str1 || !str2) throw std::exception(xor_str("str1 or str2 is nullptr"));
         std::wstring wstr1{}, wstr2{};
         std::string  strtemp{};
-        auto to_wstring = [](const std::string& str)->std::wstring {
+        static auto to_wstring = [](const std::string& str)->std::wstring {
             static std::unordered_map<std::string, int> lengthbuffer;
             auto it = lengthbuffer.find(str);
             int nLen = 0;
@@ -749,7 +749,7 @@ namespace CallBacks{
         }
         static std::unordered_map<size_t, bool> equalmap;
         //计算hash值    calculate hash value
-        auto hash = [](const std::wstring& str)->size_t {
+        static auto hash = [](const std::wstring& str)->size_t {
             static std::hash<std::wstring> hash_fn;
             return hash_fn(str);
             };
@@ -971,7 +971,7 @@ namespace CallBacks{
         void* ptr;  //指针 pointer
     };
     INLINE BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) NOEXCEPT {//远程释放内存 remote free memory
-        auto OnVirtualFreeEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType)->BOOL {
+        static auto OnVirtualFreeEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType)->BOOL {
             return CallBacks::pVirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);
         };
         return OnVirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);
@@ -980,7 +980,7 @@ namespace CallBacks{
         CallBacks::pVirtualFreeEx = callback;
     }
     INLINE LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) NOEXCEPT {
-        auto OnVirtualAllocEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect)->LPVOID {
+        static auto OnVirtualAllocEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect)->LPVOID {
             return CallBacks::pVirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);
         };
         return OnVirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);
@@ -1089,7 +1089,7 @@ namespace CallBacks{
     static SimpleRangeCache<uintptr_t, MEMORY_BASIC_INFORMATION> cache;
     std::function<SIZE_T(HANDLE,LPCVOID ,PMEMORY_BASIC_INFORMATION, SIZE_T)> pVirtualAllocExCallBack= VirtualQueryEx;
     INLINE SIZE_T VirtualQueryExApi(HANDLE hProcess,LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)NOEXCEPT {//这里的hProcess可以是进程的ID
-        auto OnVirtualQueryEx = [&](HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)->SIZE_T {
+        static auto OnVirtualQueryEx = [&](HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)->SIZE_T {
             return pVirtualAllocExCallBack(hProcess, lpAddress, lpBuffer, dwLength);
         };
         return OnVirtualQueryEx(hProcess, lpAddress, lpBuffer, dwLength);  
@@ -1117,7 +1117,7 @@ namespace CallBacks{
         CallBacks::pVirtualProtectExCallBack = pCallBack;
     }
     INLINE BOOL VirtualProtectExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)NOEXCEPT {//这里的hProcess可以是进程的ID
-        auto OnVirtualProtectEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)->bool {
+        static auto OnVirtualProtectEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)->bool {
             return CallBacks::pVirtualProtectExCallBack(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
         };
         return OnVirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect); 
@@ -2006,14 +2006,14 @@ namespace CallBacks{
         }
         std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pWriteProcessMemoryCallBack=WriteProcessMemory;
         INLINE BOOL WriteProcessMemoryApi(LPVOID lpBaseAddress,LPVOID lpbuffer,SIZE_T nSize,SIZE_T* retsize) {
-            auto OnWriteProcessMemory = [&](HANDLE _pid, LPVOID _lpbase, LPVOID _lpbuffer, SIZE_T _size,SIZE_T* _retsize)->BOOL {
+            static auto OnWriteProcessMemory = [&](HANDLE _pid, LPVOID _lpbase, LPVOID _lpbuffer, SIZE_T _size,SIZE_T* _retsize)->BOOL {
                 return pWriteProcessMemoryCallBack(_pid, _lpbase, _lpbuffer, _size,_retsize);
             };
             return OnWriteProcessMemory(m_hProcess, lpBaseAddress, lpbuffer, nSize,retsize);
         }
         std::function<BOOL(HANDLE, LPVOID, LPVOID, SIZE_T,SIZE_T*)> pReadProcessMemoryCallBack=ReadProcessMemory;
         INLINE BOOL ReadProcessMemoryApi(LPVOID lpBaseAddress, LPVOID lpbuffer,SIZE_T nSize,SIZE_T* retsize) {
-            auto OnReadProcessMemory = [&](HANDLE _pid, LPVOID _lpbase, LPVOID _lpbuffer, SIZE_T _size,SIZE_T* _retsize)->BOOL {
+            static auto OnReadProcessMemory = [&](HANDLE _pid, LPVOID _lpbase, LPVOID _lpbuffer, SIZE_T _size,SIZE_T* _retsize)->BOOL {
                 return pReadProcessMemoryCallBack(_pid, _lpbase, _lpbuffer, _size,_retsize);
             };
             return OnReadProcessMemory(m_hProcess, lpBaseAddress, lpbuffer, nSize,retsize);
