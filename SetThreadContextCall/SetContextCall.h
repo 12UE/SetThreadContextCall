@@ -1401,7 +1401,7 @@ namespace CallBacks{
         }
     }    
     template <class Fn, class T, class... Args>
-    void ThreadFunction2NoReturn(void* param) noexcept {
+    void ThreadFunction2(void* param) noexcept {
         auto threadData = Create<Fn, T, Args...>(param);
          if constexpr (!std::is_same_v<T, void>&& sizeof...(Args) > 0) {
             [threadData] (auto index) NOEXCEPT{
@@ -1883,17 +1883,9 @@ namespace CallBacks{
             return SetContextExportedCallImpl<T>(funcname, args...);
         }
         template<class T, class ...Arg>
-        INLINE AUTOTYPE SetContextExportedCallNoReturn(std::string_view funcname, __in Arg ...args) {
-			return SetContextExportedCallNoReturnImpl<T>(funcname, args...);
-        }
-        template<class T, class ...Arg>
         //未导出函数调用  call unexported function
         INLINE AUTOTYPE SetContextUndocumentedCall(LPVOID lpfunction,__in Arg ...args) {
 			return SetContextUndocumentedCallImpl<T>(lpfunction,args...);
-        }
-        template<class T, class ...Arg>
-        INLINE AUTOTYPE SetContextUndocumentedCallNoReturn(LPVOID lpfunction, __in Arg ...args) {
-			return SetContextUndocumentedCallNoReturnImpl<T>(lpfunction, args...);
         }
         template<class T>INLINE static T TONULL() NOEXCEPT { return  reinterpret_cast<T>(0); }
         void SetWriteProcessMemoryCallBack(const std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T,SIZE_T*)>& pCallBack) {    //这里的handle可以是进程的句柄也可以是PID  handle can be process handle or process id   
@@ -1904,18 +1896,8 @@ namespace CallBacks{
         }
     private:
         template<class T, class ...Arg>
-        INLINE AUTOTYPE SetContextUndocumentedCallNoReturnImpl(LPVOID lpfunction, __in Arg ...args) {
+        INLINE AUTOTYPE SetContextUndocumentedCallImpl(LPVOID lpfunction, __in Arg ...args) {
             SetContextCallImpl((T)lpfunction, args...);
-        }
-        template<class T, class ...Arg>
-        //未导出函数调用  call unexported function
-        INLINE AUTOTYPE SetContextUndocumentedCallImpl(LPVOID lpfunction,__in Arg ...args) {
-            return SetContextCall((T)lpfunction, args...);
-        }
-        template<class T, class ...Arg>
-        INLINE AUTOTYPE SetContextExportedCallNoReturnImpl(std::string_view funcname, __in Arg ...args) {
-            auto lpfunction = GetRoutine(funcname.data());
-            return SetContextCall((T)lpfunction, args...);
         }
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCallImpl(std::string_view funcname, __in Arg ...args) {
