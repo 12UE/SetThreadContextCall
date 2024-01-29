@@ -76,18 +76,12 @@ namespace stc{
         std::function<HANDLE(DWORD, DWORD)> pCreateToolhelp32Snapshot = CreateToolhelp32Snapshot;
         std::function<BOOL(HANDLE, LPTHREADENTRY32)> pThread32First = Thread32First;
         std::function<BOOL(HANDLE, LPTHREADENTRY32)> pThread32Next = Thread32Next;
-        DWORD  OnWaitForSingleObject(HANDLE handle, DWORD time) {return CallBacks::pWaitForSingleObject(handle, time);}
-        void   OnCloseHandle(HANDLE& handle) {CallBacks::pCloseHandle(handle);}
-        HANDLE OnCreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID) {return CallBacks::pCreateToolhelp32Snapshot(dwFlags, th32ProcessID);}
-        BOOL   OnThread32First(HANDLE hSnapshot, LPTHREADENTRY32 lpte) {return CallBacks::pThread32First(hSnapshot, lpte);}
-        BOOL   OnThread32Next(HANDLE hSnapshot, LPTHREADENTRY32 lpte) {return CallBacks::pThread32Next(hSnapshot, lpte);}
-        BOOL   OnVirualProtectEx(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect) {return CallBacks::pVirtualProtectExCallBack(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);}
-        void SetWaitForSingleObjectCallBack(std::function<DWORD(HANDLE, DWORD)> func) {CallBacks::pWaitForSingleObject = func;}
-        void SetCloseHandleCallBack(std::function<void(HANDLE&)> func) {CallBacks::pCloseHandle = func;}
-        void SetVirtualProtectExCallBack(std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> func) {CallBacks::pVirtualProtectExCallBack = func;}
-        void SetThread32FirstCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {CallBacks::pThread32First = func;}
-        void SetThread32NextCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {CallBacks::pThread32Next = func;}
-        void SetCreateToolhelp32Snapshot(std::function<HANDLE(DWORD, DWORD)> func) {CallBacks::pCreateToolhelp32Snapshot = func;}
+        void SetWaitForSingleObjectCallBack(std::function<DWORD(HANDLE, DWORD)> func) {pWaitForSingleObject = func;}
+        void SetCloseHandleCallBack(std::function<void(HANDLE&)> func) {pCloseHandle = func;}
+        void SetVirtualProtectExCallBack(std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> func) {pVirtualProtectExCallBack = func;}
+        void SetThread32FirstCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {pThread32First = func;}
+        void SetThread32NextCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {pThread32Next = func;}
+        void SetCreateToolhelp32Snapshot(std::function<HANDLE(DWORD, DWORD)> func) {pCreateToolhelp32Snapshot = func;}
     }
     #define INLINE inline   //内联 inline
     #define NOEXCEPT noexcept   //不抛出异常 no throw exception
@@ -95,12 +89,12 @@ namespace stc{
     class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
     public:
         INLINE static void Close(HANDLE& handle)NOEXCEPT {
-            CallBacks::OnCloseHandle(handle);
+            CallBacks::pCloseHandle(handle);
             handle = InvalidHandle();
         }    //关闭句柄 close handle
         INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }   //句柄的无效值 invalid value of handle
         INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }   //判断句柄是否有效 judge whether handle is valid
-        INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return CallBacks::OnWaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
+        INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return CallBacks::pWaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
     };
     class FileHandle:public NormalHandle {
     public:
@@ -1078,7 +1072,7 @@ namespace stc{
     }
     INLINE BOOL VirtualProtectExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)NOEXCEPT {//这里的hProcess可以是进程的ID
         static auto OnVirtualProtectEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)->bool {
-            return CallBacks::OnVirualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
+            return CallBacks::pVirtualProtectExCallBack(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
         };
         return OnVirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
     }
@@ -1819,9 +1813,9 @@ namespace stc{
         template<class PRE>
         INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
             if (m_bAttached) {
-                GenericHandle<HANDLE, NormalHandle> hSnapshot = CallBacks::OnCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                GenericHandle<HANDLE, NormalHandle> hSnapshot = CallBacks::pCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
                 THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
-                for (auto bRet = CallBacks::OnThread32First(hSnapshot, &threadEntry); bRet && hSnapshot; bRet = CallBacks::OnThread32Next(hSnapshot, &threadEntry)) {
+                for (auto bRet = CallBacks::pThread32First(hSnapshot, &threadEntry); bRet && hSnapshot; bRet = CallBacks::pThread32Next(hSnapshot, &threadEntry)) {
                     if (threadEntry.th32OwnerProcessID == m_pid) {
                         Thread thread(threadEntry);
                         if (thread && pre(thread) == EnumStatus::Break)break;
