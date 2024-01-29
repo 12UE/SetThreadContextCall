@@ -22,22 +22,23 @@
 #include <unordered_set>
 #include <winnt.h>
 #include <winternl.h>
+#include <any>
 namespace stc{
 //#define DRIVER_MODE
-#define XORSTR_INLINE	__forceinline
-#define XORSTR_NOINLINE __declspec( noinline )
-#define XORSTR_CONST	constexpr
-#define XORSTR_VOLATILE volatile
-#define AUTOTYPE decltype(auto)
-#define XORSTR_CONST_INLINE XORSTR_INLINE XORSTR_CONST 
-#define XORSTR_CONST_NOINLINE XORSTR_NOINLINE XORSTR_CONST
-#define XORSTR_FNV_OFFSET_BASIS 0xCBF29CE484333325
-#define XORSTR_FNV_PRIME __TIME__[0] * 0x1000193
-#define XORSTR_TYPE_SIZEOF( _VALUE ) sizeof( decltype( _VALUE ) )
-#define XORSTR_BYTE( _VALUE, _IDX )	( ( _VALUE >> ( __min( _IDX, ( XORSTR_TYPE_SIZEOF( _VALUE ) ) - 1)  * 8 ) ) & 0xFF )
-#define XORSTR_NIBBLE( _VALUE, _IDX ) ( ( _VALUE >> ( __min( _IDX, ( XORSTR_TYPE_SIZEOF( _VALUE ) * 2 ) - 1 ) * 4 ) ) & 0xF )
-#define XORSTR_MAKE_INTEGER_SEQUENCE( _LEN_ ) __make_integer_seq< XORSTR_INT_SEQ, SIZE_T, _LEN_ >( )
-#define XORSTR_INTEGER_SEQUENCE( _INDICES_ ) XORSTR_INT_SEQ< SIZE_T, _INDICES_... >
+    #define XORSTR_INLINE	__forceinline
+    #define XORSTR_NOINLINE __declspec( noinline )
+    #define XORSTR_CONST	constexpr
+    #define XORSTR_VOLATILE volatile
+    #define AUTOTYPE decltype(auto)
+    #define XORSTR_CONST_INLINE XORSTR_INLINE XORSTR_CONST 
+    #define XORSTR_CONST_NOINLINE XORSTR_NOINLINE XORSTR_CONST
+    #define XORSTR_FNV_OFFSET_BASIS 0xCBF29CE484333325
+    #define XORSTR_FNV_PRIME __TIME__[0] * 0x1000193
+    #define XORSTR_TYPE_SIZEOF( _VALUE ) sizeof( decltype( _VALUE ) )
+    #define XORSTR_BYTE( _VALUE, _IDX )	( ( _VALUE >> ( __min( _IDX, ( XORSTR_TYPE_SIZEOF( _VALUE ) ) - 1)  * 8 ) ) & 0xFF )
+    #define XORSTR_NIBBLE( _VALUE, _IDX ) ( ( _VALUE >> ( __min( _IDX, ( XORSTR_TYPE_SIZEOF( _VALUE ) * 2 ) - 1 ) * 4 ) ) & 0xF )
+    #define XORSTR_MAKE_INTEGER_SEQUENCE( _LEN_ ) __make_integer_seq< XORSTR_INT_SEQ, SIZE_T, _LEN_ >( )
+    #define XORSTR_INTEGER_SEQUENCE( _INDICES_ ) XORSTR_INT_SEQ< SIZE_T, _INDICES_... >
     template< typename _Ty, _Ty... Types >
     struct XORSTR_INT_SEQ {};
     XORSTR_CONST_NOINLINE INT XORSTR_ATOI8(IN CHAR Character) noexcept { return (Character >= '0' && Character <= '9') ? (Character - '0') : NULL; }
@@ -66,59 +67,27 @@ namespace stc{
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< WCHAR, _STR_LEN_ > XorStr(IN WCHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< WCHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< char32_t, _STR_LEN_ > XorStr(IN char32_t CONST(&String)[_STR_LEN_]) { return _XORSTR_< char32_t, _STR_LEN_ >(String); }
 #define xor_str( _STR_ ) XorStr( _STR_ ).String()
-namespace CallBacks{
-    std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> pVirtualProtectExCallBack=VirtualProtectEx;
-    std::function<BOOL(HANDLE, LPVOID, SIZE_T, DWORD)> pVirtualFreeEx=VirtualFreeEx;
-    std::function<LPVOID(HANDLE,LPVOID,SIZE_T,DWORD,DWORD)> pVirtualAllocEx=VirtualAllocEx;
-    //waitforSingleObject的回调函数
-    std::function<DWORD(HANDLE,DWORD)> pWaitForSingleObject=WaitForSingleObject;
-    //关闭句柄的回调函数
-    std::function<void(HANDLE&)> pCloseHandle=CloseHandle;
-    //创建线程快照的回调函数
-    std::function<HANDLE(DWORD,DWORD)> pCreateToolhelp32Snapshot=CreateToolhelp32Snapshot;
-    //找到第一个线程的回调函数
-    std::function<BOOL(HANDLE,LPTHREADENTRY32)> pThread32First=Thread32First;
-    //找到下一个线程的回调函数
-    std::function<BOOL(HANDLE,LPTHREADENTRY32)> pThread32Next=Thread32Next;
-}
-    DWORD OnWaitForSingleObject(HANDLE handle,DWORD time){
-        return CallBacks::pWaitForSingleObject(handle,time);
-    }
-    void OnCloseHandle(HANDLE& handle){
-        CallBacks::pCloseHandle(handle);
-    }
-    //创建线程快照
-    HANDLE OnCreateToolhelp32Snapshot(DWORD dwFlags,DWORD th32ProcessID){
-        return CallBacks::pCreateToolhelp32Snapshot(dwFlags,th32ProcessID);
-    }
-    BOOL OnThread32First(HANDLE hSnapshot,LPTHREADENTRY32 lpte){
-        return CallBacks::pThread32First(hSnapshot,lpte);
-    }
-    BOOL OnThread32Next(HANDLE hSnapshot,LPTHREADENTRY32 lpte){
-        return CallBacks::pThread32Next(hSnapshot,lpte);
-    }
-    //设置WaitForSingleObject的回调函数
-    void SetWaitForSingleObjectCallBack(std::function<DWORD(HANDLE,DWORD)> func){
-        CallBacks::pWaitForSingleObject=func;
-    }
-    //设置CloseHandle的回调函数
-    void SetCloseHandleCallBack(std::function<void(HANDLE&)> func){
-        CallBacks::pCloseHandle=func;
-    }
-    //设置VirtualProtectEx的回调函数
-    void SetVirtualProtectExCallBack(std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> func){
-        CallBacks::pVirtualProtectExCallBack=func;
-    }
-    //线程快照的回调函数
-    void SetThread32FirstCallBack(std::function<BOOL(HANDLE,LPTHREADENTRY32)> func){
-        CallBacks::pThread32First=func;
-    }
-    void SetThread32NextCallBack(std::function<BOOL(HANDLE,LPTHREADENTRY32)> func){
-        CallBacks::pThread32Next=func;
-    }
-    //创建线程的回调函数
-    void SetCreateToolhelp32Snapshot(std::function<HANDLE(DWORD, DWORD)> func){
-        CallBacks::pCreateToolhelp32Snapshot=func;
+    namespace CallBacks {
+        std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> pVirtualProtectExCallBack = VirtualProtectEx;
+        std::function<BOOL(HANDLE, LPVOID, SIZE_T, DWORD)> pVirtualFreeEx = VirtualFreeEx;
+        std::function<LPVOID(HANDLE, LPVOID, SIZE_T, DWORD, DWORD)> pVirtualAllocEx = VirtualAllocEx;
+        std::function<DWORD(HANDLE, DWORD)> pWaitForSingleObject = WaitForSingleObject;
+        std::function<void(HANDLE&)> pCloseHandle = CloseHandle;
+        std::function<HANDLE(DWORD, DWORD)> pCreateToolhelp32Snapshot = CreateToolhelp32Snapshot;
+        std::function<BOOL(HANDLE, LPTHREADENTRY32)> pThread32First = Thread32First;
+        std::function<BOOL(HANDLE, LPTHREADENTRY32)> pThread32Next = Thread32Next;
+        DWORD  OnWaitForSingleObject(HANDLE handle, DWORD time) {return CallBacks::pWaitForSingleObject(handle, time);}
+        void   OnCloseHandle(HANDLE& handle) {CallBacks::pCloseHandle(handle);}
+        HANDLE OnCreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID) {return CallBacks::pCreateToolhelp32Snapshot(dwFlags, th32ProcessID);}
+        BOOL   OnThread32First(HANDLE hSnapshot, LPTHREADENTRY32 lpte) {return CallBacks::pThread32First(hSnapshot, lpte);}
+        BOOL   OnThread32Next(HANDLE hSnapshot, LPTHREADENTRY32 lpte) {return CallBacks::pThread32Next(hSnapshot, lpte);}
+        BOOL   OnVirualProtectEx(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect) {return CallBacks::pVirtualProtectExCallBack(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);}
+        void SetWaitForSingleObjectCallBack(std::function<DWORD(HANDLE, DWORD)> func) {CallBacks::pWaitForSingleObject = func;}
+        void SetCloseHandleCallBack(std::function<void(HANDLE&)> func) {CallBacks::pCloseHandle = func;}
+        void SetVirtualProtectExCallBack(std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> func) {CallBacks::pVirtualProtectExCallBack = func;}
+        void SetThread32FirstCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {CallBacks::pThread32First = func;}
+        void SetThread32NextCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {CallBacks::pThread32Next = func;}
+        void SetCreateToolhelp32Snapshot(std::function<HANDLE(DWORD, DWORD)> func) {CallBacks::pCreateToolhelp32Snapshot = func;}
     }
     #define INLINE inline   //内联 inline
     #define NOEXCEPT noexcept   //不抛出异常 no throw exception
@@ -126,12 +95,12 @@ namespace CallBacks{
     class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
     public:
         INLINE static void Close(HANDLE& handle)NOEXCEPT {
-            OnCloseHandle(handle);
+            CallBacks::OnCloseHandle(handle);
             handle = InvalidHandle();
         }    //关闭句柄 close handle
         INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }   //句柄的无效值 invalid value of handle
         INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }   //判断句柄是否有效 judge whether handle is valid
-        INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return OnWaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
+        INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return CallBacks::OnWaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
     };
     class FileHandle:public NormalHandle {
     public:
@@ -1109,7 +1078,7 @@ namespace CallBacks{
     }
     INLINE BOOL VirtualProtectExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)NOEXCEPT {//这里的hProcess可以是进程的ID
         static auto OnVirtualProtectEx = [&](HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)->bool {
-            return CallBacks::pVirtualProtectExCallBack(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
+            return CallBacks::OnVirualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
         };
         return OnVirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
     }
@@ -1342,64 +1311,61 @@ namespace CallBacks{
     };
     #pragma pack(pop)//恢复原始pack restore original pack   
     //定义函数指针 define function pointer
-    typedef HMODULE(WINAPI* PLOADLIBRARYA)(LPCSTR lpLibFileName);
-    typedef FARPROC(WINAPI* PGETPROCADDRESS)(HMODULE hModule,LPCSTR  lpProcName);
-    typedef HANDLE(WINAPI* POPENEVENTA)(DWORD dwDesiredAccess,BOOL bInheritHandle,LPCSTR lpName);
-    typedef BOOL(WINAPI* PSETEVENT)(HANDLE hEvent);
-    typedef BOOL(WINAPI* PCLOSEHANDLE)(HANDLE hObject);
-    template<class Fn,class T,class ...Arg>
-    AUTOTYPE InstancePtr(void* param) {
-        if constexpr (sizeof...(Arg)>0) {
-            return static_cast<ThreadData<Fn, T>*>(param);
-        }else {
-            return static_cast<ThreadData2<Fn, T, Arg...>*>(param);
+    namespace internals {
+        using PLOADLIBRARYA = HMODULE(WINAPI*)(LPCSTR lpLibFileName);
+        using PGETPROCADDRESS = FARPROC(WINAPI*)(HMODULE hModule, LPCSTR  lpProcName);
+        using POPENEVENTA = HANDLE(WINAPI*)(DWORD dwDesiredAccess, BOOL bInheritHandle, LPCSTR lpName);
+        using PSETEVENT = BOOL(WINAPI*)(HANDLE hEvent);
+        using PCLOSEHANDLE = BOOL(WINAPI*)(HANDLE hObject);
+        template<class Fn, class RetType, class ...Arg>
+        INLINE AUTOTYPE CreatePtr(void* param) {
+            if constexpr (sizeof...(Arg) > 0) {
+                return static_cast<ThreadData2<Fn, RetType, Arg...>*>(param);
+            }
+            else {
+                return static_cast<ThreadData<Fn, RetType>*>(param);
+            }
+        }
+        template <class Fn, class T, class ...Args>//FN是函数T是返回值
+        AUTOTYPE ThreadFunction(void* param) noexcept {
+            auto threadData = CreatePtr<Fn, T, Args...>(param);
+            if constexpr (std::is_same_v<T, void>) {
+                [threadData] (auto index) NOEXCEPT{
+                    if constexpr (sizeof...(Args) > 0) {
+                        std::apply(threadData->fn, threadData->params);
+                    }else {
+                        threadData->fn();
+                    }
+                }(std::make_index_sequence<sizeof...(Args)>{});
+            }
+            else {
+                threadData->retdata = [threadData](auto index) NOEXCEPT{
+                    using RetType = decltype(threadData->retdata);
+                    RetType ret{};
+                    if constexpr (sizeof...(Args) > 0) {
+                        ret = std::apply(threadData->fn, threadData->params);
+                    }else {
+                        ret = threadData->fn();
+                    }
+                    return ret;
+                }(std::make_index_sequence<sizeof...(Args)>{});
+            }
+            auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
+            auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+            auto ntdll = pLoadLibrary(threadData->funcname[0]);
+            //通过名字打开对应的事件 open event by name 名字已经事先定义好 name is defined in advance
+            auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);//加载OpenEventA    load OpenEventA
+            auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname); //打开事件  open event
+            auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);//设置事件  set event
+            pSetEvent(hEventHandle);
+            auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
+            pCloseHandle(hEventHandle);
+            if constexpr (!std::is_same_v<T, void>) {
+                return threadData->retdata;
+            }
         }
     }
-    template<class Fn, class RetType, class ...Arg>
-    INLINE AUTOTYPE Create(void* param) {
-        if constexpr (sizeof...(Arg) > 0) {
-            return static_cast<ThreadData2<Fn, RetType, Arg...>*>(param);
-        }else {
-            return static_cast<ThreadData<Fn, RetType>*>(param);
-        }
-    }
-    template <class Fn, class T,class ...Args>//FN是函数T是返回值
-    AUTOTYPE ThreadFunction(void* param) noexcept {
-        auto threadData = Create<Fn, T,Args...>(param);
-        if constexpr (std::is_same_v<T, void>) {
-            [threadData](auto index) NOEXCEPT{
-                if constexpr (sizeof...(Args) > 0) {
-                    std::apply(threadData->fn, threadData->params);
-                }else {
-                    threadData->fn();
-                }
-            }(std::make_index_sequence<sizeof...(Args)>{});
-        }else {
-            threadData->retdata = [threadData](auto index) NOEXCEPT{
-                using RetType = decltype(threadData->retdata);
-                RetType ret{};
-                if constexpr (sizeof...(Args) > 0) {
-                    ret = std::apply(threadData->fn, threadData->params);
-                }else {
-                    ret =threadData->fn();
-                }
-                return ret;
-            }(std::make_index_sequence<sizeof...(Args)>{});
-        }
-        auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
-        auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-        auto ntdll = pLoadLibrary(threadData->funcname[0]);
-        //通过名字打开对应的事件 open event by name 名字已经事先定义好 name is defined in advance
-        auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);//加载OpenEventA    load OpenEventA
-        auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname); //打开事件  open event
-        auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);//设置事件  set event
-        pSetEvent(hEventHandle);
-        auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
-        pCloseHandle(hEventHandle);
-        if constexpr (!std::is_same_v<T, void>) {
-            return threadData->retdata;
-        }
-    }    
+       
     //代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
     typedef class DATA_CONTEXT {
     public:
@@ -1853,9 +1819,9 @@ namespace CallBacks{
         template<class PRE>
         INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
             if (m_bAttached) {
-                GenericHandle<HANDLE, NormalHandle> hSnapshot = OnCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                GenericHandle<HANDLE, NormalHandle> hSnapshot = CallBacks::OnCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
                 THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
-                for (auto bRet = OnThread32First(hSnapshot, &threadEntry); bRet && hSnapshot; bRet = OnThread32Next(hSnapshot, &threadEntry)) {
+                for (auto bRet = CallBacks::OnThread32First(hSnapshot, &threadEntry); bRet && hSnapshot; bRet = CallBacks::OnThread32Next(hSnapshot, &threadEntry)) {
                     if (threadEntry.th32OwnerProcessID == m_pid) {
                         Thread thread(threadEntry);
                         if (thread && pre(thread) == EnumStatus::Break)break;
@@ -1924,7 +1890,7 @@ namespace CallBacks{
                     if constexpr (sizeof...(args) > 0) preprocess(args...);//process parameter  处理参数
                     threadData.fn = _Fx;
                     if constexpr(sizeof...(Arg)>0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
-                    auto pFunction = &ThreadFunction<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;
+                    auto pFunction = &internals::ThreadFunction<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;
                     //get function address  获取函数地址
                     auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
                     auto lpFunction = make_Shared<BYTE>(length, m_hProcess);//allocate memory for function  分配内存
@@ -1949,9 +1915,7 @@ namespace CallBacks{
                 _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
                 ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
                 maptoorigin.clear();//clear map  清除map
-                if constexpr (!std::is_same_v<RetType, void>) {
-                    return threadData.retdata;//return value    返回值
-                }
+                if constexpr (!std::is_same_v<RetType, void>)return threadData.retdata;//return value    返回值
             }
         }   
     };
