@@ -21,7 +21,6 @@
 #include <fstream>
 #include <unordered_set>
 #include <winnt.h>
-#include <winternl.h>
 #include <any>
 namespace stc{
 //#define DRIVER_MODE
@@ -66,6 +65,316 @@ namespace stc{
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< CHAR, _STR_LEN_ > XorStr(IN CHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< CHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< WCHAR, _STR_LEN_ > XorStr(IN WCHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< WCHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< char32_t, _STR_LEN_ > XorStr(IN char32_t CONST(&String)[_STR_LEN_]) { return _XORSTR_< char32_t, _STR_LEN_ >(String); }
+    typedef enum _SYSTEM_INFORMATION_CLASS {
+        SystemBasicInformation = 0x0,
+        SystemProcessorInformation = 0x1,
+        SystemPerformanceInformation = 0x2,
+        SystemTimeOfDayInformation = 0x3,
+        SystemPathInformation = 0x4,
+        SystemProcessInformation = 0x5,
+        SystemCallCountInformation = 0x6,
+        SystemDeviceInformation = 0x7,
+        SystemProcessorPerformanceInformation = 0x8,
+        SystemFlagsInformation = 0x9,
+        SystemCallTimeInformation = 0xA,
+        SystemModuleInformation = 0xB,
+        SystemLocksInformation = 0xC,
+        SystemStackTraceInformation = 0xD,
+        SystemPagedPoolInformation = 0xE,
+        SystemNonPagedPoolInformation = 0xF,
+        SystemHandleInformation = 0x10,
+        SystemObjectInformation = 0x11,
+        SystemPageFileInformation = 0x12,
+        SystemVdmInstemulInformation = 0x13,
+        SystemVdmBopInformation = 0x14,
+        SystemFileCacheInformation = 0x15,
+        SystemPoolTagInformation = 0x16,
+        SystemInterruptInformation = 0x17,
+        SystemDpcBehaviorInformation = 0x18,
+        SystemFullMemoryInformation = 0x19,
+        SystemLoadGdiDriverInformation = 0x1A,
+        SystemUnloadGdiDriverInformation = 0x1B,
+        SystemTimeAdjustmentInformation = 0x1C,
+        SystemSummaryMemoryInformation = 0x1D,
+        SystemMirrorMemoryInformation = 0x1E,
+        SystemPerformanceTraceInformation = 0x1F,
+        SystemObsolete0 = 0x20,
+        SystemExceptionInformation = 0x21,
+        SystemCrashDumpStateInformation = 0x22,
+        SystemKernelDebuggerInformation = 0x23,
+        SystemContextSwitchInformation = 0x24,
+        SystemRegistryQuotaInformation = 0x25,
+        SystemExtendServiceTableInformation = 0x26,
+        SystemPrioritySeperation = 0x27,
+        SystemVerifierAddDriverInformation = 0x28,
+        SystemVerifierRemoveDriverInformation = 0x29,
+        SystemProcessorIdleInformation = 0x2A,
+        SystemLegacyDriverInformation = 0x2B,
+        SystemCurrentTimeZoneInformation = 0x2C,
+        SystemLookasideInformation = 0x2D,
+        SystemTimeSlipNotification = 0x2E,
+        SystemSessionCreate = 0x2F,
+        SystemSessionDetach = 0x30,
+        SystemSessionInformation = 0x31,
+        SystemRangeStartInformation = 0x32,
+        SystemVerifierInformation = 0x33,
+        SystemVerifierThunkExtend = 0x34,
+        SystemSessionProcessInformation = 0x35,
+        SystemLoadGdiDriverInSystemSpace = 0x36,
+        SystemNumaProcessorMap = 0x37,
+        SystemPrefetcherInformation = 0x38,
+        SystemExtendedProcessInformation = 0x39,
+        SystemRecommendedSharedDataAlignment = 0x3A,
+        SystemComPlusPackage = 0x3B,
+        SystemNumaAvailableMemory = 0x3C,
+        SystemProcessorPowerInformation = 0x3D,
+        SystemEmulationBasicInformation = 0x3E,
+        SystemEmulationProcessorInformation = 0x3F,
+        SystemExtendedHandleInformation = 0x40,
+        SystemLostDelayedWriteInformation = 0x41,
+        SystemBigPoolInformation = 0x42,
+        SystemSessionPoolTagInformation = 0x43,
+        SystemSessionMappedViewInformation = 0x44,
+        SystemHotpatchInformation = 0x45,
+        SystemObjectSecurityMode = 0x46,
+        SystemWatchdogTimerHandler = 0x47,
+        SystemWatchdogTimerInformation = 0x48,
+        SystemLogicalProcessorInformation = 0x49,
+        SystemWow64SharedInformationObsolete = 0x4A,
+        SystemRegisterFirmwareTableInformationHandler = 0x4B,
+        SystemFirmwareTableInformation = 0x4C,
+        SystemModuleInformationEx = 0x4D,
+        SystemVerifierTriageInformation = 0x4E,
+        SystemSuperfetchInformation = 0x4F,
+        SystemMemoryListInformation = 0x50,
+        SystemFileCacheInformationEx = 0x51,
+        SystemThreadPriorityClientIdInformation = 0x52,
+        SystemProcessorIdleCycleTimeInformation = 0x53,
+        SystemVerifierCancellationInformation = 0x54,
+        SystemProcessorPowerInformationEx = 0x55,
+        SystemRefTraceInformation = 0x56,
+        SystemSpecialPoolInformation = 0x57,
+        SystemProcessIdInformation = 0x58,
+        SystemErrorPortInformation = 0x59,
+        SystemBootEnvironmentInformation = 0x5A,
+        SystemHypervisorInformation = 0x5B,
+        SystemVerifierInformationEx = 0x5C,
+        SystemTimeZoneInformation = 0x5D,
+        SystemImageFileExecutionOptionsInformation = 0x5E,
+        SystemCoverageInformation = 0x5F,
+        SystemPrefetchPatchInformation = 0x60,
+        SystemVerifierFaultsInformation = 0x61,
+        SystemSystemPartitionInformation = 0x62,
+        SystemSystemDiskInformation = 0x63,
+        SystemProcessorPerformanceDistribution = 0x64,
+        SystemNumaProximityNodeInformation = 0x65,
+        SystemDynamicTimeZoneInformation = 0x66,
+        SystemCodeIntegrityInformation = 0x67,
+        SystemProcessorMicrocodeUpdateInformation = 0x68,
+        SystemProcessorBrandString = 0x69,
+        SystemVirtualAddressInformation = 0x6A,
+        SystemLogicalProcessorAndGroupInformation = 0x6B,
+        SystemProcessorCycleTimeInformation = 0x6C,
+        SystemStoreInformation = 0x6D,
+        SystemRegistryAppendString = 0x6E,
+        SystemAitSamplingValue = 0x6F,
+        SystemVhdBootInformation = 0x70,
+        SystemCpuQuotaInformation = 0x71,
+        SystemNativeBasicInformation = 0x72,
+        SystemErrorPortTimeouts = 0x73,
+        SystemLowPriorityIoInformation = 0x74,
+        SystemBootEntropyInformation = 0x75,
+        SystemVerifierCountersInformation = 0x76,
+        SystemPagedPoolInformationEx = 0x77,
+        SystemSystemPtesInformationEx = 0x78,
+        SystemNodeDistanceInformation = 0x79,
+        SystemAcpiAuditInformation = 0x7A,
+        SystemBasicPerformanceInformation = 0x7B,
+        SystemQueryPerformanceCounterInformation = 0x7C,
+        SystemSessionBigPoolInformation = 0x7D,
+        SystemBootGraphicsInformation = 0x7E,
+        SystemScrubPhysicalMemoryInformation = 0x7F,
+        SystemBadPageInformation = 0x80,
+        SystemProcessorProfileControlArea = 0x81,
+        SystemCombinePhysicalMemoryInformation = 0x82,
+        SystemEntropyInterruptTimingInformation = 0x83,
+        SystemConsoleInformation = 0x84,
+        SystemPlatformBinaryInformation = 0x85,
+        SystemPolicyInformation = 0x86,
+        SystemHypervisorProcessorCountInformation = 0x87,
+        SystemDeviceDataInformation = 0x88,
+        SystemDeviceDataEnumerationInformation = 0x89,
+        SystemMemoryTopologyInformation = 0x8A,
+        SystemMemoryChannelInformation = 0x8B,
+        SystemBootLogoInformation = 0x8C,
+        SystemProcessorPerformanceInformationEx = 0x8D,
+        SystemCriticalProcessErrorLogInformation = 0x8E,
+        SystemSecureBootPolicyInformation = 0x8F,
+        SystemPageFileInformationEx = 0x90,
+        SystemSecureBootInformation = 0x91,
+        SystemEntropyInterruptTimingRawInformation = 0x92,
+        SystemPortableWorkspaceEfiLauncherInformation = 0x93,
+        SystemFullProcessInformation = 0x94,
+        SystemKernelDebuggerInformationEx = 0x95,
+        SystemBootMetadataInformation = 0x96,
+        SystemSoftRebootInformation = 0x97,
+        SystemElamCertificateInformation = 0x98,
+        SystemOfflineDumpConfigInformation = 0x99,
+        SystemProcessorFeaturesInformation = 0x9A,
+        SystemRegistryReconciliationInformation = 0x9B,
+        SystemEdidInformation = 0x9C,
+        SystemManufacturingInformation = 0x9D,
+        SystemEnergyEstimationConfigInformation = 0x9E,
+        SystemHypervisorDetailInformation = 0x9F,
+        SystemProcessorCycleStatsInformation = 0xA0,
+        SystemVmGenerationCountInformation = 0xA1,
+        SystemTrustedPlatformModuleInformation = 0xA2,
+        SystemKernelDebuggerFlags = 0xA3,
+        SystemCodeIntegrityPolicyInformation = 0xA4,
+        SystemIsolatedUserModeInformation = 0xA5,
+        SystemHardwareSecurityTestInterfaceResultsInformation = 0xA6,
+        SystemSingleModuleInformation = 0xA7,
+        SystemAllowedCpuSetsInformation = 0xA8,
+        SystemVsmProtectionInformation = 0xA9,
+        SystemInterruptCpuSetsInformation = 0xAA,
+        SystemSecureBootPolicyFullInformation = 0xAB,
+        SystemCodeIntegrityPolicyFullInformation = 0xAC,
+        SystemAffinitizedInterruptProcessorInformation = 0xAD,
+        SystemRootSiloInformation = 0xAE,
+        SystemCpuSetInformation = 0xAF,
+        SystemCpuSetTagInformation = 0xB0,
+        SystemWin32WerStartCallout = 0xB1,
+        SystemSecureKernelProfileInformation = 0xB2,
+        SystemCodeIntegrityPlatformManifestInformation = 0xB3,
+        SystemInterruptSteeringInformation = 0xB4,
+        SystemSupportedProcessorArchitectures = 0xB5,
+        SystemMemoryUsageInformation = 0xB6,
+        SystemCodeIntegrityCertificateInformation = 0xB7,
+        SystemPhysicalMemoryInformation = 0xB8,
+        SystemControlFlowTransition = 0xB9,
+        SystemKernelDebuggingAllowed = 0xBA,
+        SystemActivityModerationExeState = 0xBB,
+        SystemActivityModerationUserSettings = 0xBC,
+        SystemCodeIntegrityPoliciesFullInformation = 0xBD,
+        SystemCodeIntegrityUnlockInformation = 0xBE,
+        SystemIntegrityQuotaInformation = 0xBF,
+        SystemFlushInformation = 0xC0,
+        SystemProcessorIdleMaskInformation = 0xC1,
+        SystemSecureDumpEncryptionInformation = 0xC2,
+        SystemWriteConstraintInformation = 0xC3,
+        SystemKernelVaShadowInformation = 0xC4,
+        SystemHypervisorSharedPageInformation = 0xC5,
+        SystemFirmwareBootPerformanceInformation = 0xC6,
+        SystemCodeIntegrityVerificationInformation = 0xC7,
+        SystemFirmwarePartitionInformation = 0xC8,
+        SystemSpeculationControlInformation = 0xC9,
+        SystemDmaGuardPolicyInformation = 0xCA,
+        SystemEnclaveLaunchControlInformation = 0xCB,
+        SystemWorkloadAllowedCpuSetsInformation = 0xCC,
+        SystemCodeIntegrityUnlockModeInformation = 0xCD,
+        SystemLeapSecondInformation = 0xCE,
+        SystemFlags2Information = 0xCF,
+        SystemSecurityModelInformation = 0xD0,
+        SystemCodeIntegritySyntheticCacheInformation = 0xD1,
+        SystemFeatureConfigurationInformation = 0xD2,
+        SystemFeatureConfigurationSectionInformation = 0xD3,
+        SystemFeatureUsageSubscriptionInformation = 0xD4,
+        SystemSecureSpeculationControlInformation = 0xD5,
+        SystemSpacesBootInformation = 0xD6,
+        SystemFwRamdiskInformation = 0xD7,
+        SystemWheaIpmiHardwareInformation = 0xD8,
+        SystemDifSetRuleClassInformation = 0xD9,
+        SystemDifClearRuleClassInformation = 0xDA,
+        SystemDifApplyPluginVerificationOnDriver = 0xDB,
+        SystemDifRemovePluginVerificationOnDriver = 0xDC,
+        SystemShadowStackInformation = 0xDD,
+        SystemBuildVersionInformation = 0xDE,
+        SystemPoolLimitInformation = 0xDF,
+        SystemCodeIntegrityAddDynamicStore = 0xE0,
+        SystemCodeIntegrityClearDynamicStores = 0xE1,
+        SystemPoolZeroingInformation = 0xE3,
+        MaxSystemInfoClass = 0xE4,
+    } SYSTEM_INFORMATION_CLASS;
+    typedef struct _SYSTEM_MODULE_INFORMATION {
+        HANDLE Section;
+        PVOID MappedBase;
+        PVOID Base;
+        ULONG Size;
+        ULONG Flags;
+        USHORT LoadOrderIndex;
+        USHORT InitOrderIndex;
+        USHORT LoadCount;
+        USHORT PathLength;
+        CHAR ImageName[256];
+    } SYSTEM_MODULE_INFORMATION, * PSYSTEM_MODULE_INFORMATION;
+    typedef LONG KPRIORITY;
+    typedef struct _UNICODE_STRING {
+        USHORT Length;
+        USHORT MaximumLength;
+        PWSTR  Buffer;
+    } UNICODE_STRING;
+    typedef struct _CLIENT_ID {
+        HANDLE UniqueProcess;
+        HANDLE UniqueThread;
+    } CLIENT_ID;
+    typedef struct _SYSTEM_THREAD_INFORMATION {
+        LARGE_INTEGER Reserved1[3];
+        ULONG Reserved2;
+        PVOID StartAddress;
+        CLIENT_ID ClientId;
+        KPRIORITY Priority;
+        LONG BasePriority;
+        ULONG Reserved3;
+        ULONG ThreadState;
+        ULONG WaitReason;
+    } SYSTEM_THREAD_INFORMATION, * PSYSTEM_THREAD_INFORMATION;
+    typedef struct _SYSTEM_PROCESS_INFORMATION {
+        ULONG NextEntryOffset;
+        ULONG NumberOfThreads;
+        LARGE_INTEGER Reserved[3];
+        LARGE_INTEGER CreateTime;
+        LARGE_INTEGER UserTime;
+        LARGE_INTEGER KernelTime;
+        UNICODE_STRING ImageName;
+        KPRIORITY BasePriority;
+        HANDLE UniqueProcessId;
+        HANDLE InheritedFromUniqueProcessId;
+        ULONG HandleCount;
+        ULONG SessionId;
+        ULONG_PTR UniqueProcessKey;
+        SIZE_T PeakVirtualSize;
+        SIZE_T VirtualSize;
+        ULONG PageFaultCount;
+        SIZE_T PeakWorkingSetSize;
+        SIZE_T WorkingSetSize;
+        SIZE_T QuotaPeakPagedPoolUsage;
+        SIZE_T QuotaPagedPoolUsage;
+        SIZE_T QuotaPeakNonPagedPoolUsage;
+        SIZE_T QuotaNonPagedPoolUsage;
+        SIZE_T PagefileUsage;
+        SIZE_T PeakPagefileUsage;
+        SIZE_T PrivatePageCount;
+        LARGE_INTEGER ReadOperationCount;
+        LARGE_INTEGER WriteOperationCount;
+        LARGE_INTEGER OtherOperationCount;
+        LARGE_INTEGER ReadTransferCount;
+        LARGE_INTEGER WriteTransferCount;
+        LARGE_INTEGER OtherTransferCount;
+        SYSTEM_THREAD_INFORMATION Threads[1];
+    } SYSTEM_PROCESS_INFORMATION, * PSYSTEM_PROCESS_INFORMATION;
+    typedef NTSTATUS(NTAPI* NtQuerySystemInformationType)(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength);
+    NTSTATUS  ZwQuerySystemInformationApi(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength
+    ) {
+        static auto ntdll = GetModuleHandleA("ntdll.dll");
+        NTSTATUS status = STATUS_INVALID_PARAMETER;
+        if (ntdll){
+            static auto ZwQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationType>(GetProcAddress(ntdll, "ZwQuerySystemInformation"));
+            if (ZwQuerySystemInformation){
+                status = ZwQuerySystemInformation(SystemInformationClass, SystemInformation, SystemInformationLength, ReturnLength);
+            }
+        }
+        return status;
+    }
 #define xor_str( _STR_ ) XorStr( _STR_ ).String()
     namespace CallBacks {
         std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> pVirtualProtectExCallBack = VirtualProtectEx;
@@ -86,6 +395,9 @@ namespace stc{
         std::function<DWORD(HANDLE)> pSuspendThread = SuspendThread;
         //恢复线程的回调  resume thread callback
         std::function<DWORD(HANDLE)> pResumeThread = ResumeThread;
+        std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pWriteProcessMemoryCallBack = WriteProcessMemory;
+        std::function<BOOL(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pReadProcessMemoryCallBack = ReadProcessMemory;
+        std::function<NTSTATUS(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG)> pZwQuerySystemInformation = ZwQuerySystemInformationApi;
         void SetWaitForSingleObjectCallBack(std::function<DWORD(HANDLE, DWORD)> func) {pWaitForSingleObject = func;}
         void SetCloseHandleCallBack(std::function<void(HANDLE&)> func) {pCloseHandle = func;}
         void SetVirtualProtectExCallBack(std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> func) {pVirtualProtectExCallBack = func;}
@@ -94,6 +406,12 @@ namespace stc{
         void SetCreateToolhelp32Snapshot(std::function<HANDLE(DWORD, DWORD)> func) {pCreateToolhelp32Snapshot = func;}
         void SetOpenThreadCallBack(const std::function<HANDLE(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId)>& pCallBack) {pOpenThread = pCallBack;}
         void SetGetExitCodeThreadCallBack(const std::function<BOOL(HANDLE, LPDWORD)>& pCallBack) {pGetExitCodeThread = pCallBack;}
+        void SetReadProcessMemoryCallBack(const std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)>& pCallBack) {//这里的handle可以是进程的句柄也可以是PID  handle can be process handle or process id    
+            pReadProcessMemoryCallBack = pCallBack;
+        }
+        void SetWriteProcessMemoryCallBack(const std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)>& pCallBack) {    //这里的handle可以是进程的句柄也可以是PID  handle can be process handle or process id   
+            pWriteProcessMemoryCallBack = pCallBack;
+        }
     }
     #define INLINE inline   //内联 inline
     #define NOEXCEPT noexcept   //不抛出异常 no throw exception
@@ -203,6 +521,7 @@ namespace stc{
     }PEB_LDR_DATA64, * PPEB_LDR_DATA64, * PLDT, LDT;
     namespace Win32 {
 #if defined(_WIN64)
+        
         typedef struct _LDR_DATA_TABLE_ENTRY64 {
             LIST_ENTRY64 InLoadOrderLinks;
             LIST_ENTRY64 InMemoryOrderLinks;
@@ -415,7 +734,6 @@ namespace stc{
             DeleteCriticalSection(&g_cs);
         }
     };
-
     template<typename T>
     INLINE void writeToFileHelper(std::ofstream& file, const T& value) {
         file.write(reinterpret_cast<const char*>(&value), sizeof(value));
@@ -614,6 +932,64 @@ namespace stc{
                 return "";
             }
         }
+        typedef
+            VOID
+            (NTAPI* PPS_POST_PROCESS_INIT_ROUTINE) (
+                VOID
+                );
+        typedef struct _PEB_LDR_DATA {
+            BYTE Reserved1[8];
+            PVOID Reserved2[3];
+            LIST_ENTRY InMemoryOrderModuleList;
+        } PEB_LDR_DATA, * PPEB_LDR_DATA;
+        typedef struct _RTL_USER_PROCESS_PARAMETERS {
+            BYTE Reserved1[16];
+            PVOID Reserved2[10];
+            UNICODE_STRING ImagePathName;
+            UNICODE_STRING CommandLine;
+        } RTL_USER_PROCESS_PARAMETERS, * PRTL_USER_PROCESS_PARAMETERS;
+        typedef struct _PEB {
+            BYTE Reserved1[2];
+            BYTE BeingDebugged;
+            BYTE Reserved2[1];
+            PVOID Reserved3[2];
+            PPEB_LDR_DATA Ldr;
+            PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
+            PVOID Reserved4[3];
+            PVOID AtlThunkSListPtr;
+            PVOID Reserved5;
+            ULONG Reserved6;
+            PVOID Reserved7;
+            ULONG Reserved8;
+            ULONG AtlThunkSListPtr32;
+            PVOID Reserved9[45];
+            BYTE Reserved10[96];
+            PPS_POST_PROCESS_INIT_ROUTINE PostProcessInitRoutine;
+            BYTE Reserved11[128];
+            PVOID Reserved12[1];
+            ULONG SessionId;
+        } PEB, * PPEB;
+        typedef struct _TEB {
+            PVOID Reserved1[12];
+            PPEB ProcessEnvironmentBlock;
+            PVOID Reserved2[399];
+            BYTE Reserved3[1952];
+            PVOID TlsSlots[64];
+            BYTE Reserved4[8];
+            PVOID Reserved5[26];
+            PVOID ReservedForOle;  // Windows 2000 only
+            PVOID Reserved6[4];
+            PVOID TlsExpansionSlots;
+        } TEB, * PTEB;
+        __forceinline
+            struct _TEB*
+            NtCurrentTeb(
+                VOID
+            )
+
+        {
+            return (struct _TEB*)__readgsqword(FIELD_OFFSET(NT_TIB, Self));
+        }
         INLINE void* GetRoutine(const char* _functionName, const char* _moduleName = "") {
             static std::unordered_map<std::string, void*> m_procAddrs;
             auto fullname = std::string(_moduleName) + _functionName;
@@ -737,37 +1113,9 @@ namespace stc{
             auto equal = wstr1.compare(wstr2) == 0;        //容易忘记这里写什么才是正确的,这里是0,因为compare返回0表示相等 easy to forget what to write here is correct,here is 0,because compare return 0 means equal
             equalmap.emplace(std::make_pair(hashvalue, equal));
             return equal;
-        }
-        else {
+        }else {
             return it->second;
         }
-    }
-    INLINE DWORD GetProcessIdByName(const char* processName) NOEXCEPT {//get process id by name   通过名称获取进程id
-        DWORD _pid = 0;
-        static std::unordered_map<std::string, DWORD> pidlist;
-        static std::mutex m_mutex;
-        auto it = pidlist.find(processName);
-        if (it == pidlist.end()) {
-            DWORD pid = 0;
-            //返回GenericHandle是为了防止忘记关闭句柄，因为GenericHandle析构函数会自动关闭句柄预防内存泄漏  return GenericHandle is for prevent forget close handle, because GenericHandle destructor will close handle automatically to prevent memory leak
-            GenericHandle<HANDLE, NormalHandle> hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-            PROCESSENTRY32W processEntry{ sizeof(PROCESSENTRY32W), };
-            //采用for循环遍历进程快照，直到找到进程名为processName的进程 use for loop to enumerate process snapshot until find process name isprocessName
-            for (auto bRet = Process32FirstW(hSnapshot, &processEntry); bRet && hSnapshot; bRet = Process32NextW(hSnapshot, &processEntry)) {
-                //比较进程名 compare process name 不区分大小写不区分char*和wchar_t* case insensitive for char* and wchar_t*
-                if (_ucsicmp(processEntry.szExeFile, processName)) {
-                    pid = processEntry.th32ProcessID;
-                    break;
-                }
-            }
-            std::unique_lock<std::mutex> lock(m_mutex);//上锁为了防止多线程同时插入map lock for prevent multi thread insert map at the same time
-            pidlist.emplace(std::make_pair(processName, pid));
-            _pid = pid;
-        }
-        else {
-            _pid = it->second;
-        }
-        return _pid;
     }
     #define PAGESIZE 0X1000 //页面大小 page size
     #if defined _WIN64
@@ -1668,9 +2016,30 @@ namespace stc{
             CloseHandle(m_hProcess);
 #endif
         }
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+        template<class _PRE>
+        inline void EnumProcess(_PRE bin) {
+            auto buffer = std::make_unique<CHAR[]>(0x1);
+            ULONG return_length = 0;
+            if (!NT_SUCCESS(ZwQuerySystemInformationEx(SystemExtendedProcessInformation, buffer, &return_length))) return;
+            ULONG total_offset = 0;
+            auto process_info = (PSYSTEM_PROCESS_INFORMATION)buffer.get() + total_offset;
+            while (process_info->NextEntryOffset != NULL) {
+                total_offset += process_info->NextEntryOffset;
+                memmove(process_info, buffer.get() + total_offset, sizeof(_SYSTEM_PROCESS_INFORMATION));
+                if (bin(*process_info) == EnumStatus::Break) break;
+            }
+        }
         INLINE void Attach(const char* _szProcessName) NOEXCEPT {//attach process   附加进程
             //get process id    获取进程id
-            auto pid = GetProcessIdByName(_szProcessName);
+            DWORD pid = 0;
+            EnumProcess([&](SYSTEM_PROCESS_INFORMATION& process_info)->EnumStatus {
+                if (_ucsicmp(process_info.ImageName.Buffer, _szProcessName)) {
+                    pid = HandleToULong(process_info.Threads->ClientId.UniqueProcess);
+                    return EnumStatus::Break;
+                }
+                return EnumStatus::Continue;
+            });
             if (pid) {
                 ProcessName = _szProcessName;
                 m_pid = pid;
@@ -1689,7 +2058,7 @@ namespace stc{
         INLINE ULONG _ReadApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
             if (m_bAttached) {
                 SIZE_T bytesRead = 0;
-                ReadProcessMemoryApi( lpBaseAddress, lpBuffer, nSize,&bytesRead);
+                CallBacks::pReadProcessMemoryCallBack(m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
                 return bytesRead;
             }
             return 0;
@@ -1698,7 +2067,7 @@ namespace stc{
         INLINE ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
             if (m_bAttached) {
                 SIZE_T bytesWritten = 0;
-                WriteProcessMemoryApi(lpBaseAddress, lpBuffer, nSize,&bytesWritten);
+                CallBacks::pWriteProcessMemoryCallBack(m_hProcess,lpBaseAddress, lpBuffer, nSize,&bytesWritten);
                 return bytesWritten;
             }
             return 0;
@@ -1735,24 +2104,54 @@ namespace stc{
 			return SetContextUndocumentedCallImpl<T>(lpfunction,args...);
         }
         template<class T>INLINE static T TONULL() NOEXCEPT { return  reinterpret_cast<T>(0); }
-        void SetWriteProcessMemoryCallBack(const std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T,SIZE_T*)>& pCallBack) {    //这里的handle可以是进程的句柄也可以是PID  handle can be process handle or process id   
-            pWriteProcessMemoryCallBack = pCallBack;
-        }
-        void SetReadProcessMemoryCallBack(const std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T,SIZE_T*)>& pCallBack) {//这里的handle可以是进程的句柄也可以是PID  handle can be process handle or process id    
-            pReadProcessMemoryCallBack = pCallBack;
-        }
     private:
+        #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
+        static NTSTATUS ZwQuerySystemInformationEx(SYSTEM_INFORMATION_CLASS SystemClass, std::unique_ptr<CHAR[]>& SystemInfo, PULONG nSize = NULL) {
+            ULONG buffer_size = 0x1000;
+            auto buffer = std::make_unique<CHAR[]>(buffer_size);
+            if (!buffer) return STATUS_INVALID_PARAMETER;
+            ULONG return_length = 0;
+            NTSTATUS status;
+            do {
+                status = CallBacks::pZwQuerySystemInformation(SystemClass, buffer.get(), buffer_size, &return_length);
+                if (status == STATUS_INFO_LENGTH_MISMATCH) {
+                    buffer = std::make_unique<CHAR[]>(return_length);
+                    buffer_size = return_length;
+                }
+            } while (status == STATUS_INFO_LENGTH_MISMATCH);
+            if (!NT_SUCCESS(status))return STATUS_INVALID_PARAMETER;
+            SystemInfo = std::move(buffer);
+            if (nSize) *nSize = return_length;
+            return status;
+        }
         template<class PRE>
         INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
-            if (m_bAttached) {
-                GenericHandle<HANDLE, NormalHandle> hSnapshot = CallBacks::pCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-                THREADENTRY32 threadEntry{ sizeof(THREADENTRY32), };
-                for (auto bRet = CallBacks::pThread32First(hSnapshot, &threadEntry); bRet && hSnapshot; bRet = CallBacks::pThread32Next(hSnapshot, &threadEntry)) {
-                    if (threadEntry.th32OwnerProcessID == m_pid) {
-                        Thread thread(threadEntry);
-                        if (thread && pre(thread) == EnumStatus::Break)break;
+            auto buffer = std::make_unique<CHAR[]>(0x1);
+            if (!buffer) return;
+            ULONG returnLength = 0;
+            if (!NT_SUCCESS(ZwQuerySystemInformationEx(SystemProcessInformation, buffer, &returnLength))) return;
+            auto current = (PSYSTEM_PROCESS_INFORMATION)buffer.get();
+            auto status = EnumStatus::Continue;
+            while (TRUE) {
+                for (ULONG i = 0; i < current->NumberOfThreads; i++) {
+                    auto threadInfo = (PSYSTEM_THREAD_INFORMATION)((ULONG_PTR)current + sizeof(SYSTEM_PROCESS_INFORMATION) + i * sizeof(SYSTEM_THREAD_INFORMATION));
+                    if (HandleToULong(current->UniqueProcessId) == m_pid) {
+                        THREADENTRY32 _threadEntry{ sizeof(THREADENTRY32), };
+                        _threadEntry.th32ThreadID = HandleToULong(threadInfo->ClientId.UniqueThread);
+                        _threadEntry.th32OwnerProcessID = HandleToULong(current->UniqueProcessId);
+                        _threadEntry.tpBasePri = threadInfo->BasePriority;
+                        _threadEntry.tpDeltaPri = threadInfo->Priority;
+                        _threadEntry.dwFlags = 0;
+                        Thread thread(_threadEntry);
+                        if (thread.IsRunning() ) {
+                            status = pre(thread);
+                            if (status == EnumStatus::Break) break;
+                        }
                     }
                 }
+                ULONG nextOffset = current->NextEntryOffset;
+                if (nextOffset == 0 || status == EnumStatus::Break)break;
+                current = (PSYSTEM_PROCESS_INFORMATION)((ULONG_PTR)current + nextOffset);
             }
         }
         INLINE void ClearMemory() NOEXCEPT {
@@ -1775,20 +2174,6 @@ namespace stc{
             }else {
                  return ThreadData<Fn, RetType>{};
             }
-        }
-        std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pWriteProcessMemoryCallBack=WriteProcessMemory;
-        INLINE BOOL WriteProcessMemoryApi(LPVOID lpBaseAddress,LPVOID lpbuffer,SIZE_T nSize,SIZE_T* retsize) {
-            static auto OnWriteProcessMemory = [&](HANDLE _pid, LPVOID _lpbase, LPVOID _lpbuffer, SIZE_T _size,SIZE_T* _retsize)->BOOL {
-                return pWriteProcessMemoryCallBack(_pid, _lpbase, _lpbuffer, _size,_retsize);
-            };
-            return OnWriteProcessMemory(m_hProcess, lpBaseAddress, lpbuffer, nSize,retsize);
-        }
-        std::function<BOOL(HANDLE, LPVOID, LPVOID, SIZE_T,SIZE_T*)> pReadProcessMemoryCallBack=ReadProcessMemory;
-        INLINE BOOL ReadProcessMemoryApi(LPVOID lpBaseAddress, LPVOID lpbuffer,SIZE_T nSize,SIZE_T* retsize) {
-            static auto OnReadProcessMemory = [&](HANDLE _pid, LPVOID _lpbase, LPVOID _lpbuffer, SIZE_T _size,SIZE_T* _retsize)->BOOL {
-                return pReadProcessMemoryCallBack(_pid, _lpbase, _lpbuffer, _size,_retsize);
-            };
-            return OnReadProcessMemory(m_hProcess, lpBaseAddress, lpbuffer, nSize,retsize);
         }
         template<class _Fn, class ...Arg>
         AUTOTYPE SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
