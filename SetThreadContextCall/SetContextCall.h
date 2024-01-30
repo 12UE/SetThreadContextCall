@@ -65,6 +65,7 @@ namespace stc{
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< CHAR, _STR_LEN_ > XorStr(IN CHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< CHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< WCHAR, _STR_LEN_ > XorStr(IN WCHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< WCHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< char32_t, _STR_LEN_ > XorStr(IN char32_t CONST(&String)[_STR_LEN_]) { return _XORSTR_< char32_t, _STR_LEN_ >(String); }
+#define xor_str( _STR_ ) XorStr( _STR_ ).String()
     typedef enum _SYSTEM_INFORMATION_CLASS {
         SystemBasicInformation = 0x0,
         SystemProcessorInformation = 0x1,
@@ -368,14 +369,14 @@ namespace stc{
         static auto ntdll = GetModuleHandleA("ntdll.dll");
         NTSTATUS status = STATUS_INVALID_PARAMETER;
         if (ntdll){
-            static auto ZwQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationType>(GetProcAddress(ntdll, "ZwQuerySystemInformation"));
+            static auto ZwQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationType>(GetProcAddress(ntdll, xor_str("ZwQuerySystemInformation")));
             if (ZwQuerySystemInformation){
                 status = ZwQuerySystemInformation(SystemInformationClass, SystemInformation, SystemInformationLength, ReturnLength);
             }
         }
         return status;
     }
-#define xor_str( _STR_ ) XorStr( _STR_ ).String()
+
     namespace CallBacks {
         std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> pVirtualProtectExCallBack = VirtualProtectEx;
         std::function<BOOL(HANDLE, LPVOID, SIZE_T, DWORD)> pVirtualFreeEx = VirtualFreeEx;
