@@ -976,15 +976,7 @@ namespace stc{
             PVOID Reserved6[4];
             PVOID TlsExpansionSlots;
         } TEB, * PTEB;
-        __forceinline
-            struct _TEB*
-            NtCurrentTeb(
-                VOID
-            )
-
-        {
-            return (struct _TEB*)__readgsqword(FIELD_OFFSET(NT_TIB, Self));
-        }
+        __forceinline struct _TEB*NtCurrentTeb(VOID){return (struct _TEB*)__readgsqword(FIELD_OFFSET(NT_TIB, Self));}
         INLINE void* GetRoutine(const char* _functionName, const char* _moduleName = "") {
             static std::unordered_map<std::string, void*> m_procAddrs;
             auto fullname = std::string(_moduleName) + _functionName;
