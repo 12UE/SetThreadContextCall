@@ -76,12 +76,24 @@ namespace stc{
         std::function<HANDLE(DWORD, DWORD)> pCreateToolhelp32Snapshot = CreateToolhelp32Snapshot;
         std::function<BOOL(HANDLE, LPTHREADENTRY32)> pThread32First = Thread32First;
         std::function<BOOL(HANDLE, LPTHREADENTRY32)> pThread32Next = Thread32Next;
+        std::function<HANDLE(DWORD dwDesiredAccess, BOOL, DWORD)> pOpenThread = OpenThread;
+        std::function<BOOL(HANDLE, LPDWORD)> pGetExitCodeThread = GetExitCodeThread;
+        //设置获取线程上下文的回调  set get thread context callback
+        std::function<BOOL(HANDLE, LPCONTEXT)> pGetThreadContext = GetThreadContext;
+        //设置线程上下文的回调  set set thread context callback
+        std::function<BOOL(HANDLE, LPCONTEXT)> pSetThreadContext = SetThreadContext;
+        //暂停线程的回调  suspend thread callback
+        std::function<DWORD(HANDLE)> pSuspendThread = SuspendThread;
+        //恢复线程的回调  resume thread callback
+        std::function<DWORD(HANDLE)> pResumeThread = ResumeThread;
         void SetWaitForSingleObjectCallBack(std::function<DWORD(HANDLE, DWORD)> func) {pWaitForSingleObject = func;}
         void SetCloseHandleCallBack(std::function<void(HANDLE&)> func) {pCloseHandle = func;}
         void SetVirtualProtectExCallBack(std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> func) {pVirtualProtectExCallBack = func;}
         void SetThread32FirstCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {pThread32First = func;}
         void SetThread32NextCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {pThread32Next = func;}
         void SetCreateToolhelp32Snapshot(std::function<HANDLE(DWORD, DWORD)> func) {pCreateToolhelp32Snapshot = func;}
+        void SetOpenThreadCallBack(const std::function<HANDLE(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId)>& pCallBack) {pOpenThread = pCallBack;}
+        void SetGetExitCodeThreadCallBack(const std::function<BOOL(HANDLE, LPDWORD)>& pCallBack) {pGetExitCodeThread = pCallBack;}
     }
     #define INLINE inline   //内联 inline
     #define NOEXCEPT noexcept   //不抛出异常 no throw exception
@@ -1410,50 +1422,20 @@ namespace stc{
         GenericHandle<HANDLE,NormalHandle> m_GenericHandleThread;//采用智能句柄  use smart handle//可以是内核的句柄 can be kernel handle
         DWORD m_dwThreadId = 0;
         std::atomic_bool m_bAttached = false;
-        std::function<HANDLE(DWORD dwDesiredAccess,BOOL,DWORD)> pOpenThread = OpenThread;
-        //关闭句柄的回调
-        std::function<BOOL(HANDLE)> pCloseHandle = CloseHandle;
-        std::function<BOOL(HANDLE,LPDWORD)> pGetExitCodeThread = GetExitCodeThread;
-        //设置获取线程上下文的回调  set get thread context callback
-        std::function<BOOL(HANDLE, LPCONTEXT)> pGetThreadContext = GetThreadContext;
-        //设置线程上下文的回调  set set thread context callback
-        std::function<BOOL(HANDLE, LPCONTEXT)> pSetThreadContext = SetThreadContext;
-        //暂停线程的回调  suspend thread callback
-        std::function<DWORD(HANDLE)> pSuspendThread = SuspendThread;
-        //恢复线程的回调  resume thread callback
-        std::function<DWORD(HANDLE)> pResumeThread = ResumeThread;
-        HANDLE OnOpenThread(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId) {
-            if(pOpenThread) return pOpenThread(dwDesiredAccess, bInheritHandle, dwThreadId);
-        }
-        BOOL OnGetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode) {
-            if (pGetExitCodeThread) return pGetExitCodeThread(hThread, lpExitCode);
-        }
-        BOOL OnGetThreadContext(HANDLE hThread, LPCONTEXT lpContext) {
-            if (pGetThreadContext) return pGetThreadContext(hThread, lpContext);
-        }
-        BOOL OnSetThreadContext(HANDLE hThread, LPCONTEXT lpContext) {
-            if (pSetThreadContext) return pSetThreadContext(hThread, lpContext);
-        }
-        DWORD OnSuspendThread(HANDLE hThread) {
-            if (pSuspendThread) return pSuspendThread(hThread);
-        }
-        DWORD OnResumeThread(HANDLE hThread) {
-            if (pResumeThread) return pResumeThread(hThread);
-        }
     public:
         Thread() = default;
         //设置回调
         void SetOpenThreadCallBack(const std::function<HANDLE(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId)>& pCallBack) {
-            pOpenThread = pCallBack;
+            CallBacks::pOpenThread = pCallBack;
         }
         Thread(DWORD dwThreadId) NOEXCEPT {    //打开线程 open thread
             m_dwThreadId = dwThreadId;
-            m_GenericHandleThread = OnOpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+            m_GenericHandleThread = CallBacks::pOpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
             if (m_GenericHandleThread)m_bAttached = true;
         }
         Thread(const THREADENTRY32& threadEntry) NOEXCEPT {    //打开线程 open thread
             m_dwThreadId = threadEntry.th32ThreadID;
-            m_GenericHandleThread = OnOpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
+            m_GenericHandleThread = CallBacks::pOpenThread(THREAD_ALL_ACCESS, FALSE, m_dwThreadId);
             if (m_GenericHandleThread)m_bAttached = true;
             if (m_GenericHandleThread)m_bAttached = true;
         }
@@ -1462,23 +1444,11 @@ namespace stc{
             m_dwThreadId = other.m_dwThreadId;
             bool Attached = other.m_bAttached;
             //把目标的回调函数指针赋值给当前对象 assign target callback function pointer to current object
-            pOpenThread = other.pOpenThread;
-            pGetExitCodeThread = other.pGetExitCodeThread;
-            pGetThreadContext = other.pGetThreadContext;
-            pSetThreadContext = other.pSetThreadContext;
-            pSuspendThread = other.pSuspendThread;
-            pResumeThread = other.pResumeThread;
-            pCloseHandle = other.pCloseHandle;
+            
             m_bAttached = Attached;
             other.m_dwThreadId = 0;
-            //删除目标的回调函数指针 delete target callback function pointer
-            other.pOpenThread = nullptr;
-            other.pGetExitCodeThread = nullptr;
-            other.pGetThreadContext = nullptr;
-            other.pSetThreadContext = nullptr;
-            other.pSuspendThread = nullptr;
-            other.pResumeThread = nullptr;
-            other.pCloseHandle = nullptr;
+            
+           
             other.m_bAttached = false;
         }
         Thread& operator=(Thread&& other) NOEXCEPT {    //移动赋值 move assignment
@@ -1486,22 +1456,8 @@ namespace stc{
                 m_GenericHandleThread = std::move(other.m_GenericHandleThread);
                 m_dwThreadId = other.m_dwThreadId;
                 bool Attached = other.m_bAttached;
-                //把目标的回调函数指针赋值给当前对象 assign target callback function pointer to current object
-                pOpenThread = other.pOpenThread;
-                pGetExitCodeThread = other.pGetExitCodeThread;
-                pGetThreadContext = other.pGetThreadContext;
-                pSetThreadContext = other.pSetThreadContext;
-                pSuspendThread = other.pSuspendThread;
-                pResumeThread = other.pResumeThread;
-                pCloseHandle = other.pCloseHandle;
+                //把目标的回调函数指针赋值给当前对象 assign target callback function pointer to current object  
                 m_bAttached = Attached;
-                //删除目标的回调函数指针 delete target callback function pointer
-                other.pOpenThread = nullptr;
-                other.pGetExitCodeThread = nullptr;
-                other.pGetThreadContext = nullptr;
-                other.pSetThreadContext = nullptr;
-                other.pSuspendThread = nullptr;
-                other.pResumeThread = nullptr;
                 other.m_dwThreadId = 0;
                 other.m_bAttached = false;
             }
@@ -1511,14 +1467,12 @@ namespace stc{
         }
         HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }//获取线程句柄  get thread handle
         operator bool() { return IsRunning(); }
-        void SetGetExitCodeThreadCallBack(const std::function<BOOL(HANDLE, LPDWORD)>& pCallBack) {
-            pGetExitCodeThread = pCallBack;
-        }
+        
         bool IsRunning() NOEXCEPT {
             //获取线程退出代码  get thread exit code
             if (m_bAttached) {
                 DWORD dwExitCode = 0;
-                if (OnGetExitCodeThread(m_GenericHandleThread, &dwExitCode)) {
+                if (CallBacks::pGetExitCodeThread(m_GenericHandleThread, &dwExitCode)) {
                     if (dwExitCode == STILL_ACTIVE) {
                         return true;
                     }
@@ -1527,38 +1481,31 @@ namespace stc{
             return false;
         }
         //获取线程上下文  get thread context
-        CONTEXT GetContext() NOEXCEPT {
+        CONTEXT GetContext(){
             CONTEXT context = {};
             if (m_bAttached) {
                 context.ContextFlags = CONTEXT_FULL;
-                OnGetThreadContext(m_GenericHandleThread, &context);
+                CallBacks::pGetThreadContext(m_GenericHandleThread, &context);
             }
             return context;
         }
         //设置线程的上下文  set thread context
         void SetContext(const CONTEXT& context) NOEXCEPT {
             if (m_bAttached) {
-                OnSetThreadContext(m_GenericHandleThread, (PCONTEXT)&context);
+                CallBacks::pSetThreadContext(m_GenericHandleThread, (PCONTEXT)&context);
             }
         }
-        //获取线程的上下文回调
-        void SetGetThreadContextCallBack(const std::function<BOOL(HANDLE, LPCONTEXT)>& pCallBack) {
-            pGetThreadContext = pCallBack;
-        }
-        //设置线程的上下文回调
-        void SetSetThreadContextCallBack(const std::function<BOOL(HANDLE, LPCONTEXT)>& pCallBack) {
-            pSetThreadContext = pCallBack;
-        }
+        
         //暂停线程执行  suspend thread execution
-        void Suspend() NOEXCEPT {
+        void Suspend(){
             if (m_bAttached) {
-                OnSuspendThread(m_GenericHandleThread);
+                CallBacks::pSuspendThread(m_GenericHandleThread);
             }
         }
         //恢复线程执行  resume thread execution
-        void Resume() NOEXCEPT {
+        void Resume(){
             if (m_bAttached) {
-                OnResumeThread(m_GenericHandleThread);
+                CallBacks::pResumeThread(m_GenericHandleThread);
             }
         }
     };
@@ -1904,9 +1851,9 @@ namespace stc{
                     thread.Resume();//resume thread   恢复线程
                     return EnumStatus::Break;
                 });
-                hEvent.Wait(INFINITE);//wait event  等待事件
+                if constexpr (!std::is_same_v<RetType, void>) hEvent.Wait(INFINITE);//wait event  等待事件
                 if (maptoorigin.size() > 0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
-                _ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
+                if constexpr (!std::is_same_v<RetType, void>)_ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
                 ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
                 maptoorigin.clear();//clear map  清除map
                 if constexpr (!std::is_same_v<RetType, void>)return threadData.retdata;//return value    返回值
