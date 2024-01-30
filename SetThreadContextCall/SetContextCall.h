@@ -1840,11 +1840,13 @@ namespace stc{
                     dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address  设置函数地址
                     dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
                     using parametertype = decltype(threadData);
-                    auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
-                    m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
-                    _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
-                    dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
-                    _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address  设置参数地址
+                    if constexpr (sizeof...(Arg) > 0) {
+                        auto lpParameter = make_Shared<parametertype>(1, m_hProcess);//allocate memory for parameter    分配内存
+                        m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
+                        _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写入参数
+                        dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
+                        _paramAddr = (uintptr_t)lpParameter.raw();//set parameter address  设置参数地址
+                    }
                     ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
                     _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写入datacontext
                     thread.SetContext(ctx);//set context    设置上下文
