@@ -383,9 +383,6 @@ namespace stc{
         std::function<LPVOID(HANDLE, LPVOID, SIZE_T, DWORD, DWORD)> pVirtualAllocEx = VirtualAllocEx;
         std::function<DWORD(HANDLE, DWORD)> pWaitForSingleObject = WaitForSingleObject;
         std::function<void(HANDLE&)> pCloseHandle = CloseHandle;
-        std::function<HANDLE(DWORD, DWORD)> pCreateToolhelp32Snapshot = CreateToolhelp32Snapshot;
-        std::function<BOOL(HANDLE, LPTHREADENTRY32)> pThread32First = Thread32First;
-        std::function<BOOL(HANDLE, LPTHREADENTRY32)> pThread32Next = Thread32Next;
         std::function<HANDLE(DWORD dwDesiredAccess, BOOL, DWORD)> pOpenThread = OpenThread;
         std::function<BOOL(HANDLE, LPDWORD)> pGetExitCodeThread = GetExitCodeThread;
         //设置获取线程上下文的回调  set get thread context callback
@@ -402,9 +399,6 @@ namespace stc{
         void SetWaitForSingleObjectCallBack(std::function<DWORD(HANDLE, DWORD)> func) {pWaitForSingleObject = func;}
         void SetCloseHandleCallBack(std::function<void(HANDLE&)> func) {pCloseHandle = func;}
         void SetVirtualProtectExCallBack(std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> func) {pVirtualProtectExCallBack = func;}
-        void SetThread32FirstCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {pThread32First = func;}
-        void SetThread32NextCallBack(std::function<BOOL(HANDLE, LPTHREADENTRY32)> func) {pThread32Next = func;}
-        void SetCreateToolhelp32Snapshot(std::function<HANDLE(DWORD, DWORD)> func) {pCreateToolhelp32Snapshot = func;}
         void SetOpenThreadCallBack(const std::function<HANDLE(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId)>& pCallBack) {pOpenThread = pCallBack;}
         void SetGetExitCodeThreadCallBack(const std::function<BOOL(HANDLE, LPDWORD)>& pCallBack) {pGetExitCodeThread = pCallBack;}
         void SetReadProcessMemoryCallBack(const std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)>& pCallBack) {//这里的handle可以是进程的句柄也可以是PID  handle can be process handle or process id    
@@ -2095,13 +2089,18 @@ namespace stc{
             }
         }
         template<class T, class ...Arg>
+        using Functype = T(__stdcall*)(Arg...);
+        //T 是返回值类型 T is return value type
+        template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCall(std::string_view funcname, __in Arg ...args) {
-            return SetContextExportedCallImpl<T>(funcname, args...);
+            auto lpFunction = GetRoutine(funcname.data());
+            return SetContextExportedCallImpl<Functype>(lpFunction, args...);
         }
+        //T 是返回值类型 T is return value type
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
         INLINE AUTOTYPE SetContextUndocumentedCall(LPVOID lpfunction,__in Arg ...args) {
-			return SetContextUndocumentedCallImpl<T>(lpfunction,args...);
+			return SetContextUndocumentedCallImpl<Functype>(lpfunction,args...);
         }
         template<class T>INLINE static T TONULL() NOEXCEPT { return  reinterpret_cast<T>(0); }
     private:
