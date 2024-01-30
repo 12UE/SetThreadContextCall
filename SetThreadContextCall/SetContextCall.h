@@ -1703,7 +1703,6 @@ namespace stc{
             }
             return 0;
         }
-        
         template <typename T>
         struct is_callable {
             template <typename U>
@@ -1712,7 +1711,6 @@ namespace stc{
             static std::false_type test(...);
             static constexpr bool value = decltype(test<T>(nullptr))::value;//is callable
         };
-        
         INLINE AUTOTYPE SetContextCall(auto&& _Fx, auto&& ...args) NOEXCEPT {
             static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
             //获得函数体的返回值
