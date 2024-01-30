@@ -2093,7 +2093,7 @@ namespace stc{
         //T 是返回值类型 T is return value type
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCall(std::string_view funcname, __in Arg ...args) {
-            auto lpFunction = GetRoutine(funcname.data());
+            auto lpFunction=GetRoutine(funcname.data());
             return SetContextExportedCallImpl<Functype>(lpFunction, args...);
         }
         //T 是返回值类型 T is return value type
@@ -2162,9 +2162,8 @@ namespace stc{
             SetContextCallImpl((T)lpfunction, args...);
         }
         template<class T, class ...Arg>
-        INLINE AUTOTYPE SetContextExportedCallImpl(std::string_view funcname, __in Arg ...args) {
-            auto lpfunction = GetRoutine(funcname.data());
-            return SetContextCall((T)lpfunction, args...);
+        INLINE AUTOTYPE SetContextExportedCallImpl(LPVOID lpfunc, __in Arg ...args) {
+            return SetContextCall((T)lpfunc, args...);
         }
         template<class Fn, class RetType, class ...Arg>
         INLINE AUTOTYPE Create() {
