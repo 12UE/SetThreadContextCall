@@ -98,8 +98,7 @@ namespace stc{
     #define INLINE inline   //内联 inline
     #define NOEXCEPT noexcept   //不抛出异常 no throw exception
     #define MAXKEYSIZE 0x10000
-    class NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
-    public:
+    struct NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
         INLINE static void Close(HANDLE& handle)NOEXCEPT {
             CallBacks::pCloseHandle(handle);
             handle = InvalidHandle();
@@ -108,21 +107,18 @@ namespace stc{
         INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle; }   //判断句柄是否有效 judge whether handle is valid
         INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return CallBacks::pWaitForSingleObject(handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
     };
-    class FileHandle:public NormalHandle {
-    public:
+    struct FileHandle:public NormalHandle {
         INLINE static void Close(HANDLE& handle)NOEXCEPT {
             FindClose(handle);
             handle = InvalidHandle();
         }
     };
     template<class Ty>
-    class HandleView :public Ty {//采用基础句柄的视图,不负责关闭句柄 use basic handle HandleView,not responsible for closing handle
-    public:
+    struct HandleView :public Ty {//采用基础句柄的视图,不负责关闭句柄 use basic handle HandleView,not responsible for closing 
         INLINE static void Close(HANDLE& handle)NOEXCEPT { /*作为视图并不关闭 as a HandleView  doesn't close*/ }//多态具有自己的行为  polymorphism has its own behavior
     };
     template<class T, class Traits>
     class GenericHandle {//利用RAII机制管理句柄 use RAII mechanism to manage handle
-    private:
         T m_handle = Traits::InvalidHandle();
         bool m_bOwner = false;//所有者 owner
         int refcount = 1;
@@ -500,7 +496,6 @@ namespace stc{
         }
     };
     class SystemRoutine {
-    private:
         std::unordered_map<std::string, std::string> data;
         std::unordered_map<std::string, HMODULE> modules;
         SpinLock lock;
@@ -813,8 +808,7 @@ namespace stc{
         }
     };
     template<class T>
-    class InstanceManger {
-    public:
+    struct InstanceManger {
         template<class... Args>
         INLINE static Instance<T> CreateInstance(InstanceManger* thisinstance, Args&&... args) {
             std::atomic_bool Owend = false;
@@ -884,7 +878,6 @@ namespace stc{
     };
     template<typename T >
     class SingleTon {
-    private:
         template <class... Args>
         INLINE static INLINE T* CreateInstance(Args&& ...args) NOEXCEPT {
             Instance<T> obj{};
@@ -929,8 +922,7 @@ namespace stc{
         ss << t;
         OutputDebugStringA(ss.str().c_str());
     }
-    class FreeBlock {//空闲块 free block
-    public:
+    struct FreeBlock {//空闲块 free block
         FreeBlock()= default;
         FreeBlock(void* _ptr,size_t _size) :size(_size), ptr(_ptr) {}
         size_t size;//大小 size
@@ -972,8 +964,7 @@ namespace stc{
         ~FastMutex() { DeleteCriticalSection(&g_cs); }//删除临界区 delete critical section
     };
     FastMutex lock;
-    template<typename _Tx>class CacheItem {//缓存项 cache item
-    public:
+    template<typename _Tx>struct CacheItem {//缓存项 cache item
         using timepoint = std::chrono::time_point<std::chrono::system_clock>;
         timepoint m_endtime;
         _Tx   m_value;
@@ -1294,25 +1285,22 @@ namespace stc{
     #pragma pack(push)
     #pragma pack(1)
     template<class Fn, class T>
-    class ThreadDataBase {
-    public:
+    struct ThreadDataBase {
         Fn fn;//function    函数
         char eventname[MAX_PATH];
         char funcname[4][MAX_PATH];
         LPVOID pFunc[2];
     };
     template<class Fn, class T>
-    class ThreadData :public ThreadDataBase<Fn, T> {
-    public:
+    struct ThreadData :public ThreadDataBase<Fn, T> {
         T retdata;//return data 返回值
     };
     template <class Fn>
-    class ThreadData<Fn, void> :public ThreadDataBase<Fn, void> {//特化当返回值为void的情况 specialize when return value is void
-    public:
+    struct ThreadData<Fn, void> :public ThreadDataBase<Fn, void> {//特化当返回值为void的情况 specialize when return value is void
     };
     template <class Fn, class T, class ...Args>
-    class ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from ThreadData   线程数据结构继承自ThreadData
-    public://这里的T会因为是void而选用ThreadData<Fn, void> T here will use ThreadData<Fn, void> because it is void
+    struct ThreadData2 :public ThreadData<Fn, T> {//Thread Data Struct inherit from ThreadData   线程数据结构继承自ThreadData
+    //这里的T会因为是void而选用ThreadData<Fn, void> T here will use ThreadData<Fn, void> because it is void
         std::tuple<Args...> params;//parameters   参数 多个参数用tuple存储 multiple parameters use tuple to store
     };
     #pragma pack(pop)//恢复原始pack restore original pack   
@@ -1373,8 +1361,8 @@ namespace stc{
     }
        
     //代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
-    typedef class DATA_CONTEXT {
-    public:
+
+    typedef struct DATA_CONTEXT {
         BYTE ShellCode[0x30];				//x64:0X00   |->x86:0x00
         LPVOID pFunction;				    //x64:0X30	 |->x86:0x30
         PBYTE lpParameter;					//x64:0X38	 |->x86:0x34
@@ -1608,8 +1596,7 @@ namespace stc{
         for (size_t i = 0; i < rhs.size(); i++)result.push_back(rhs[i]);
         return result;
     }
-    class RunningMode {
-    public:
+    struct RunningMode {
         LPVOID OriginAddr;
         EnumRunningMode m_RunningMode;
     };
