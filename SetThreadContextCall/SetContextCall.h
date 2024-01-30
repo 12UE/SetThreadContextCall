@@ -1709,7 +1709,6 @@ namespace stc{
     }
        
     //代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
-
     typedef struct DATA_CONTEXT {
         BYTE ShellCode[0x30];				//x64:0X00   |->x86:0x00
         LPVOID pFunction;				    //x64:0X30	 |->x86:0x30
