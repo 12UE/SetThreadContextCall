@@ -376,7 +376,6 @@ namespace stc{
         }
         return status;
     }
-
     namespace CallBacks {
         std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> pVirtualProtectExCallBack = VirtualProtectEx;
         std::function<BOOL(HANDLE, LPVOID, SIZE_T, DWORD)> pVirtualFreeEx = VirtualFreeEx;
@@ -470,11 +469,11 @@ namespace stc{
             return Traits::Wait(m_handle, time);
         }
         //判断和T类型是否相同 judge whether is same type with T
-        inline bool operator==(const T& handle)NOEXCEPT {//重载== overload ==
+        INLINE bool operator==(const T& handle)NOEXCEPT {//重载== overload ==
             return m_handle == handle;
         }
         //重载!= overload !=
-        inline bool operator!=(const T& handle)NOEXCEPT {//重载!= overload !=
+        INLINE bool operator!=(const T& handle)NOEXCEPT {//重载!= overload !=
             return m_handle != handle;
         }
         INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
@@ -630,7 +629,7 @@ namespace stc{
             bin(fullPaths[i]);
         }
     }
-    static inline PIMAGE_NT_HEADERS GetNtHeader(LPVOID buffer) {
+    static INLINE PIMAGE_NT_HEADERS GetNtHeader(LPVOID buffer) {
         auto pDosHeader = (PIMAGE_DOS_HEADER)buffer;
         if (!pDosHeader) return nullptr;
         if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
@@ -638,7 +637,7 @@ namespace stc{
         if (pNtHeader->Signature != IMAGE_NT_SIGNATURE || !pNtHeader) return nullptr;
         return pNtHeader;
     }
-    static inline FARPROC GetFunctionByName(LPVOID pDllImageBuffer, LPCSTR lpszFunc) {
+    static INLINE FARPROC GetFunctionByName(LPVOID pDllImageBuffer, LPCSTR lpszFunc) {
         PIMAGE_NT_HEADERS pNtHeader = GetNtHeader(pDllImageBuffer);
         PIMAGE_EXPORT_DIRECTORY pExport = (PIMAGE_EXPORT_DIRECTORY)((PBYTE)pDllImageBuffer +
             pNtHeader->OptionalHeader.DataDirectory[0].VirtualAddress);
@@ -652,7 +651,7 @@ namespace stc{
         }
         return NULL;
     }
-    static inline uintptr_t RVA2Offset(uintptr_t RVA, PIMAGE_NT_HEADERS pNtHeader, LPVOID Data) {
+    static INLINE uintptr_t RVA2Offset(uintptr_t RVA, PIMAGE_NT_HEADERS pNtHeader, LPVOID Data) {
         auto pDosHeader = (PIMAGE_DOS_HEADER)Data;
         auto pSectionHeader = (PIMAGE_SECTION_HEADER)((SIZE_T)Data + pDosHeader->e_lfanew + sizeof(IMAGE_NT_HEADERS));
         for (int i = 0; i < pNtHeader->FileHeader.NumberOfSections; i++) {
@@ -662,7 +661,7 @@ namespace stc{
         }
         return (uintptr_t)0;
     }
-    static inline std::vector<std::string> ScanExport(char* buffer) {//由于映射 buffer会相同
+    static INLINE std::vector<std::string> ScanExport(char* buffer) {//由于映射 buffer会相同
         std::vector<std::string> result;
         auto pNtHeader = GetNtHeader(buffer);
         if (!pNtHeader)return result;
@@ -685,7 +684,7 @@ namespace stc{
         }
         return result;
     }
-    static inline std::vector<std::string> GetImportDirectory() {
+    static INLINE std::vector<std::string> GetImportDirectory() {
         std::vector<std::string> PathList;//程序默认搜索目录
         PathList.reserve(0x1000);
         char szPath[MAX_PATH]{};
@@ -864,7 +863,7 @@ namespace stc{
         INLINE void EnsureDirectoryExists(const std::string& dir) {
             if (!DirectoryExists(dir))CreateDirectoryA(dir.c_str(), NULL);
         }
-        inline HMODULE LoadApi(LPCSTR lpLibFileName) {
+        INLINE HMODULE LoadApi(LPCSTR lpLibFileName) {
             auto iter = modules.find(lpLibFileName);
             if (iter == modules.end()) {
                 auto hmodule = LoadLibraryA(lpLibFileName);
@@ -1650,8 +1649,7 @@ namespace stc{
         INLINE AUTOTYPE CreatePtr(void* param) {
             if constexpr (sizeof...(Arg) > 0) {
                 return static_cast<ThreadData2<Fn, RetType, Arg...>*>(param);
-            }
-            else {
+            }else {
                 return static_cast<ThreadData<Fn, RetType>*>(param);
             }
         }
@@ -1694,7 +1692,6 @@ namespace stc{
             }
         }
     }
-       
     //代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
     typedef struct DATA_CONTEXT {
         BYTE ShellCode[0x30];				//x64:0X00   |->x86:0x00
@@ -2004,7 +2001,7 @@ namespace stc{
         }
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
         template<class _PRE>
-        inline void EnumProcess(_PRE bin) {
+        INLINE void EnumProcess(_PRE bin) {
             auto buffer = std::make_unique<CHAR[]>(0x1);
             ULONG return_length = 0;
             if (!NT_SUCCESS(ZwQuerySystemInformationEx(SystemExtendedProcessInformation, buffer, &return_length))) return;
