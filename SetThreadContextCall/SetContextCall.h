@@ -1472,40 +1472,47 @@ namespace stc {
         using POPENEVENTA = HANDLE(WINAPI*)(DWORD dwDesiredAccess, BOOL bInheritHandle, LPCSTR lpName);
         using PSETEVENT = BOOL(WINAPI*)(HANDLE hEvent);
         using PCLOSEHANDLE = BOOL(WINAPI*)(HANDLE hObject);
-        template<class Fn, class RetType, class ...Arg>
-        INLINE AUTOTYPE CreatePtr(void* param) {
-            if constexpr (sizeof...(Arg) > 0) {
-                return static_cast<ThreadData2<Fn, RetType, Arg...>*>(param);
-            }
-            else {
-                return static_cast<ThreadData<Fn, RetType>*>(param);
-            }
-        }
         template <class Fn, class T, class ...Args>//FN是函数T是返回值
         AUTOTYPE ThreadFunction(void* param) noexcept {
-            auto threadData = CreatePtr<Fn, T, Args...>(param);;
+            auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
             if constexpr (std::is_same_v<T, void>) {
                 [threadData] (auto index) NOEXCEPT{
                     if constexpr (sizeof...(Args) > 0) {
                         std::apply(threadData->fn, threadData->params);
+                    }else {
+                        threadData->fn();
                     }
-else {
-   threadData->fn();
-}
                 }(std::make_index_sequence<sizeof...(Args)>{});
-            }
-            else {
+            }else {
                 threadData->retdata = [threadData](auto index) NOEXCEPT{
                     using RetType = decltype(threadData->retdata);
                     RetType ret{};
                     if constexpr (sizeof...(Args) > 0) {
                         ret = std::apply(threadData->fn, threadData->params);
+                    }else {
+                        ret = threadData->fn();
                     }
-else {
-   ret = threadData->fn();
-}
-return ret;
+                    return ret;
                 }(std::make_index_sequence<sizeof...(Args)>{});
+            }
+            auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
+            auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+            auto ntdll = pLoadLibrary(threadData->funcname[0]);
+            //通过名字打开对应的事件 open event by name 名字已经事先定义好 name is defined in advance
+            auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);//加载OpenEventA    load OpenEventA
+            auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname); //打开事件  open event
+            auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);//设置事件  set event
+            pSetEvent(hEventHandle);
+            auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
+            pCloseHandle(hEventHandle);
+        }
+        template <class Fn, class T>//FN是函数T是返回值
+    AUTOTYPE ThreadFunction(void* param) noexcept {
+            auto threadData = static_cast<ThreadData<Fn, T>*>(param);
+            if constexpr (std::is_same_v<T, void>) {
+                threadData->fn();
+            }else {
+                threadData->retdata = threadData->fn();
             }
             auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
             auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
