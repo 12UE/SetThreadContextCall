@@ -1507,11 +1507,11 @@ namespace stc {
             pCloseHandle(hEventHandle);
         }
         template <class Fn, class T>//FN是函数T是返回值
-    AUTOTYPE ThreadFunction(void* param) noexcept {
+        AUTOTYPE ThreadFunction(void* param) noexcept {
             auto threadData = static_cast<ThreadData<Fn, T>*>(param);
             if constexpr (std::is_same_v<T, void>) {
                 threadData->fn();
-            }else {
+            }else { 
                 threadData->retdata = threadData->fn();
             }
             auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
