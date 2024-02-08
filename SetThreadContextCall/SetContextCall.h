@@ -198,9 +198,7 @@ namespace stc {
             using FuncType = T(__stdcall*)(Args...);
             auto iter = CallBacksMap.find(type);
             void* f = nullptr;
-            if (iter != CallBacksMap.end()) {
-                f = iter->second;
-            }
+            if (iter != CallBacksMap.end())f = iter->second;
             if (f)return FuncType(reinterpret_cast<FuncType>(f));
         }
         template<typename FuncType>
@@ -1319,16 +1317,10 @@ namespace stc {
         }
         return false;
     }
-    bool IsReadableAddress(HANDLE hProcess, LPVOID addr) {
-        return ValidAddress(hProcess, (uintptr_t)addr, sizeof(BYTE), MemReadableProtectMask);
-    }
-    bool IsWriteableAddress(HANDLE hProcess, LPVOID addr) {
-        return ValidAddress(hProcess, (uintptr_t)addr, sizeof(BYTE), MemWriteableProtectMask);
-    }
-    bool IsReadableRegion(HANDLE hProcess, LPVOID _Addr, unsigned int _Size) {
+    bool IsReadableRegion(HANDLE hProcess, LPVOID _Addr, unsigned int _Size= sizeof(BYTE)) {
         return ValidAddress(hProcess, (uintptr_t)_Addr, _Size, MemReadableProtectMask);
     }
-    bool IsWriteableRegion(HANDLE hProcess, LPVOID _Addr, unsigned int _Size) {
+    bool IsWriteableRegion(HANDLE hProcess, LPVOID _Addr, unsigned int _Size = sizeof(BYTE)) {
         return ValidAddress(hProcess, (uintptr_t)_Addr, _Size, MemWriteableProtectMask);
     }
     class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
