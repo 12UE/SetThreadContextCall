@@ -22,6 +22,9 @@
 #include <unordered_set>
 #include <winnt.h>
 #include <any>
+#define INLINE inline   //内联 inline
+#define NOEXCEPT noexcept   //不抛出异常 no throw exception
+#define MAXKEYSIZE 0x10000
 namespace stc {
     //#define DRIVER_MODE
 #define XORSTR_INLINE	__forceinline
@@ -138,9 +141,9 @@ namespace stc {
         SYSTEM_THREAD_INFORMATION Threads[1];
     } SYSTEM_PROCESS_INFORMATION, * PSYSTEM_PROCESS_INFORMATION;
     typedef NTSTATUS(NTAPI* NtQuerySystemInformationType)(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength);
-    NTSTATUS  ZwQuerySystemInformationApi(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength
+    INLINE NTSTATUS  ZwQuerySystemInformationApi(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength
     ) {
-        static auto ntdll = GetModuleHandleA("ntdll.dll");
+        static auto ntdll = GetModuleHandleA(xor_str("ntdll.dll"));
         NTSTATUS status = STATUS_INVALID_PARAMETER;
         if (ntdll) {
             static auto ZwQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationType>(GetProcAddress(ntdll, xor_str("ZwQuerySystemInformation")));
@@ -150,6 +153,23 @@ namespace stc {
         }
         return status;
     }
+    enum CallBackType {
+        VirtualProtectExCallBack,
+        VirtualFreeExCallBack,
+        VirtualAllocExCallBack,
+        VirtualQueryExCallBack,
+        WaitForSingleObjectCallBack,
+        CloseHandleCallBack,
+        OpenThreadCallBack,
+        GetExitCodeThreadCallBack,
+        GetThreadContextCallBack,
+        SetThreadContextCallBack,
+        SuspendThreadCallBack,
+        ResumeThreadCallBack,
+        WriteProcessMemoryCallBack,
+        ReadProcessMemoryCallBack,
+        ZwQuerySystemInformationCallBack
+    };
     namespace CallBacks {
         std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> pVirtualProtectExCallBack = VirtualProtectEx;
         std::function<BOOL(HANDLE, LPVOID, SIZE_T, DWORD)> pVirtualFreeEx = VirtualFreeEx;
@@ -171,53 +191,18 @@ namespace stc {
         std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pWriteProcessMemoryCallBack = WriteProcessMemory;
         std::function<BOOL(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pReadProcessMemoryCallBack = ReadProcessMemory;
         std::function<NTSTATUS(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG)> pZwQuerySystemInformation = ZwQuerySystemInformationApi;
-        enum class CallBackType {
-            VirtualProtectExCallBack,
-            VirtualFreeEx,
-            VirtualAllocEx,
-            VirtualQueryEx,
-            WaitForSingleObject,
-            CloseHandle,
-            OpenThread,
-            GetExitCodeThread,
-            GetThreadContext,
-            SetThreadContext,
-            SuspendThread,
-            ResumeThread,
-            WriteProcessMemoryCallBack,
-            ReadProcessMemoryCallBack,
-            ZwQuerySystemInformation
-        };
-        std::unordered_map<CallBackType, void*> CallBacksMap;
         template<typename FuncType>
-        void SetCallBackImpl(CallBackType type, FuncType&& callBack) {
-            CallBacksMap[type] = &callBack;
-        }
-        template<class T, typename Func, typename... Args>
-        auto OnCallBackImpl(CallBackType type, Args&&... args) -> decltype(std::any_cast<std::function<Func>>(CallBacksMap[type])(std::forward<Args>(args)...)) {
-            using FuncType = T(__stdcall*)(Args...);
-            auto iter = CallBacksMap.find(type);
-            void* f = nullptr;
-            if (iter != CallBacksMap.end())f = iter->second;
-            if (f)return FuncType(reinterpret_cast<FuncType>(f));
-        }
-        template<typename FuncType>
-        void SetCallBack(FuncType&& callBack, std::function<FuncType>& pCallBack) {
+        INLINE void SetCallBack(FuncType&& callBack, std::function<FuncType>& pCallBack) {
             pCallBack = std::forward<FuncType>(callBack);
         }
         template<typename Func, typename... Args>
-        auto OnCallBack(std::function<Func> pCallBack, Args&&... args) -> decltype(pCallBack(std::forward<Args>(args)...)) {
-            if (pCallBack) {
-                // 调用回调函数，并传递任意数量和类型的参数
-                return pCallBack(std::forward<Args>(args)...);
-            }
+        INLINE AUTOTYPE OnCallBack(const std::function<Func>& pCallBack, Args&&... args) {
+            if (pCallBack) return pCallBack(std::forward<Args>(args)...);
         }
     }
-#define INLINE inline   //内联 inline
-#define NOEXCEPT noexcept   //不抛出异常 no throw exception
-#define MAXKEYSIZE 0x10000
     struct NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
         INLINE static void Close(HANDLE& handle)NOEXCEPT {
+            //CallBacks::OnCallBack(CallBacks::pCloseHandle,handle);
             CallBacks::OnCallBack(CallBacks::pCloseHandle, handle);
             handle = InvalidHandle();
         }    //关闭句柄 close handle
@@ -1081,7 +1066,6 @@ namespace stc {
     INLINE LPVOID VirtualAllocExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect) NOEXCEPT {
         return CallBacks::pVirtualAllocEx(hProcess, lpAddress, dwSize, flAllocationType, flProtect);
     }
-
     constexpr DWORD CacheMinTTL = 128;
     constexpr DWORD CacheNormalTTL = 200;
     constexpr DWORD CacheMaxTTL = 4096;
@@ -1317,10 +1301,10 @@ namespace stc {
         }
         return false;
     }
-    bool IsReadableRegion(HANDLE hProcess, LPVOID _Addr, unsigned int _Size= sizeof(BYTE)) {
+    INLINE bool IsReadableRegion(HANDLE hProcess, LPVOID _Addr, unsigned int _Size = sizeof(BYTE)) {
         return ValidAddress(hProcess, (uintptr_t)_Addr, _Size, MemReadableProtectMask);
     }
-    bool IsWriteableRegion(HANDLE hProcess, LPVOID _Addr, unsigned int _Size = sizeof(BYTE)) {
+    INLINE bool IsWriteableRegion(HANDLE hProcess, LPVOID _Addr, unsigned int _Size = sizeof(BYTE)) {
         return ValidAddress(hProcess, (uintptr_t)_Addr, _Size, MemWriteableProtectMask);
     }
     class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
@@ -1464,47 +1448,40 @@ namespace stc {
         using POPENEVENTA = HANDLE(WINAPI*)(DWORD dwDesiredAccess, BOOL bInheritHandle, LPCSTR lpName);
         using PSETEVENT = BOOL(WINAPI*)(HANDLE hEvent);
         using PCLOSEHANDLE = BOOL(WINAPI*)(HANDLE hObject);
+        template<class Fn, class RetType, class ...Arg>
+        INLINE AUTOTYPE CreatePtr(void* param) {
+            if constexpr (sizeof...(Arg) > 0) {
+                return static_cast<ThreadData2<Fn, RetType, Arg...>*>(param);
+            }
+            else {
+                return static_cast<ThreadData<Fn, RetType>*>(param);
+            }
+        }
         template <class Fn, class T, class ...Args>//FN是函数T是返回值
-        AUTOTYPE ThreadFunction(void* param) noexcept {
-            auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
+        DECLSPEC_NOINLINE AUTOTYPE ThreadFunction(void* param) noexcept {
+            auto threadData = CreatePtr<Fn, T, Args...>(param);;
             if constexpr (std::is_same_v<T, void>) {
                 [threadData] (auto index) NOEXCEPT{
                     if constexpr (sizeof...(Args) > 0) {
                         std::apply(threadData->fn, threadData->params);
-                    }else {
-                        threadData->fn();
                     }
+else {
+   threadData->fn();
+}
                 }(std::make_index_sequence<sizeof...(Args)>{});
-            }else {
+            }
+            else {
                 threadData->retdata = [threadData](auto index) NOEXCEPT{
                     using RetType = decltype(threadData->retdata);
                     RetType ret{};
                     if constexpr (sizeof...(Args) > 0) {
                         ret = std::apply(threadData->fn, threadData->params);
-                    }else {
-                        ret = threadData->fn();
                     }
-                    return ret;
+else {
+   ret = threadData->fn();
+}
+return ret;
                 }(std::make_index_sequence<sizeof...(Args)>{});
-            }
-            auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
-            auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-            auto ntdll = pLoadLibrary(threadData->funcname[0]);
-            //通过名字打开对应的事件 open event by name 名字已经事先定义好 name is defined in advance
-            auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);//加载OpenEventA    load OpenEventA
-            auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname); //打开事件  open event
-            auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);//设置事件  set event
-            pSetEvent(hEventHandle);
-            auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
-            pCloseHandle(hEventHandle);
-        }
-        template <class Fn, class T>//FN是函数T是返回值
-        AUTOTYPE ThreadFunction(void* param) noexcept {
-            auto threadData = static_cast<ThreadData<Fn, T>*>(param);
-            if constexpr (std::is_same_v<T, void>) {
-                threadData->fn();
-            }else { 
-                threadData->retdata = threadData->fn();
             }
             auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
             auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
@@ -1566,7 +1543,7 @@ namespace stc {
     class Thread {//把线程当做对象来处理  process thread as object
         GenericHandle<HANDLE, NormalHandle> m_GenericHandleThread;//采用智能句柄  use smart handle//可以是内核的句柄 can be kernel handle
         DWORD m_dwThreadId = 0;
-        std::atomic_bool m_bAttached = false;
+        bool m_bAttached = false;
         std::atomic_int m_nSuspendCount = 0;
     public:
         Thread() = default;
@@ -1584,48 +1561,50 @@ namespace stc {
         Thread(Thread&& other) NOEXCEPT {    //移动构造  move construct
             m_GenericHandleThread = std::move(other.m_GenericHandleThread);
             m_dwThreadId = other.m_dwThreadId;
-            bool Attached = other.m_bAttached;
-            //把目标的回调函数指针赋值给当前对象 assign target callback function pointer to current object
-
-            m_bAttached = Attached;
+            m_bAttached = other.m_bAttached;
             other.m_dwThreadId = 0;
-
-
             other.m_bAttached = false;
         }
         Thread& operator=(Thread&& other) NOEXCEPT {    //移动赋值 move assignment
             if (this != &other) {
                 m_GenericHandleThread = std::move(other.m_GenericHandleThread);
                 m_dwThreadId = other.m_dwThreadId;
-                bool Attached = other.m_bAttached;
-                //把目标的回调函数指针赋值给当前对象 assign target callback function pointer to current object  
-                m_bAttached = Attached;
+                m_bAttached = other.m_bAttached;
                 other.m_dwThreadId = 0;
                 other.m_bAttached = false;
             }
             return *this;
         }
         ~Thread() NOEXCEPT {
-            m_nSuspendCount--;
-            if (m_nSuspendCount == 0)Resume();
+            if (m_bAttached) {
+                m_nSuspendCount--;
+                if (m_nSuspendCount == 0)Resume();
+            }
         }
-        HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }//获取线程句柄  get thread handle
-        operator bool() { return IsRunning(); }
-
-        bool IsRunning() NOEXCEPT {
+        INLINE HANDLE GetHandle() NOEXCEPT { return m_GenericHandleThread; }//获取线程句柄  get thread handle
+        INLINE operator bool() { return IsRunning(); }
+        INLINE bool IsRunning() NOEXCEPT {
             //获取线程退出代码  get thread exit code
             if (m_bAttached) {
                 DWORD dwExitCode = 0;
                 if (CallBacks::OnCallBack(CallBacks::pGetExitCodeThread, m_GenericHandleThread, &dwExitCode)) {
-                    if (dwExitCode == STILL_ACTIVE) {
-                        return true;
-                    }
+                    if (dwExitCode == STILL_ACTIVE)return true;
                 }
             }
             return false;
         }
+        INLINE bool IsWait(CONTEXT* pctx = nullptr) {
+            if (!m_bAttached) return false;
+            if (!SuspendCount())Suspend();
+            auto ctx = GetContext();
+            if (SuspendCount() > 1)Resume();
+            auto xip = (uintptr_t)ctx.XIP;
+            if (IsReadableRegion(GetCurrentProcess(), pctx, sizeof(ctx))) memcpy_s(pctx, sizeof(ctx), &ctx, sizeof(ctx));
+            if (xip == (uintptr_t)WaitForSingleObject || xip == (uintptr_t)WaitForMultipleObjects)return true;
+            return false;
+        }
         //获取线程上下文  get thread context
-        CONTEXT GetContext() {
+        INLINE CONTEXT GetContext() {
             CONTEXT context = {};
             if (m_bAttached) {
                 context.ContextFlags = CONTEXT_FULL;
@@ -1634,24 +1613,24 @@ namespace stc {
             return context;
         }
         //设置线程的上下文  set thread context
-        void SetContext(const CONTEXT& context) NOEXCEPT {
-            if (m_bAttached) {
-                CallBacks::OnCallBack(CallBacks::pSetThreadContext, m_GenericHandleThread, (PCONTEXT)&context);
-            }
+        INLINE void SetContext(const CONTEXT& context) NOEXCEPT {
+            if (m_bAttached) CallBacks::OnCallBack(CallBacks::pSetThreadContext, m_GenericHandleThread, (PCONTEXT)&context);
         }
         //暂停线程执行  suspend thread execution
-        void Suspend() {
+        INLINE void Suspend() {
             if (m_bAttached) {
                 CallBacks::OnCallBack(CallBacks::pSuspendThread, m_GenericHandleThread);
                 m_nSuspendCount++;
             }
         }
         //恢复线程执行  resume thread execution
-        void Resume() {
+        INLINE void Resume() {
             if (m_bAttached) {
                 CallBacks::OnCallBack(CallBacks::pResumeThread, m_GenericHandleThread);
+                m_nSuspendCount--;
             }
         }
+        INLINE int SuspendCount() { return m_nSuspendCount; }
     };
     template <typename T>
     class ThreadSafeVector {//线程安全的vector thread safe vector
@@ -1915,27 +1894,23 @@ namespace stc {
         }
         template<class T>INLINE static T TONULL() NOEXCEPT { return  reinterpret_cast<T>(0); }
     private:
+#define STATUS_SUCCESS                   ((NTSTATUS)0x00000000L)
 #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
-        static NTSTATUS ZwQuerySystemInformationEx(SYSTEM_INFORMATION_CLASS SystemClass, std::unique_ptr<CHAR[]>& SystemInfo, PULONG nSize = NULL) {
-            ULONG buffer_size = 0x1000;
-            auto buffer = std::make_unique<CHAR[]>(buffer_size);
+        INLINE static NTSTATUS ZwQuerySystemInformationEx(SYSTEM_INFORMATION_CLASS SystemClass, std::unique_ptr<CHAR[]>& SystemInfo, PULONG nSize = NULL, ULONG buffer_size = PAGESIZE) {
+            auto buffer = std::make_unique<CHAR[]>(0x1000);
             if (!buffer) return STATUS_INVALID_PARAMETER;
             ULONG return_length = 0;
-            NTSTATUS status;
-            do {
-                status = CallBacks::OnCallBack(CallBacks::pZwQuerySystemInformation, SystemClass, buffer.get(), buffer_size, &return_length);
-                if (status == STATUS_INFO_LENGTH_MISMATCH) {
-                    buffer = std::make_unique<CHAR[]>(return_length);
-                    buffer_size = return_length;
-                }
-            } while (status == STATUS_INFO_LENGTH_MISMATCH);
-            if (!NT_SUCCESS(status))return STATUS_INVALID_PARAMETER;
+            for (auto status = STATUS_INFO_LENGTH_MISMATCH; status == STATUS_INFO_LENGTH_MISMATCH; status = CallBacks::OnCallBack(CallBacks::pZwQuerySystemInformation, SystemClass, buffer.get(), buffer_size, &return_length)) {
+                buffer = std::make_unique<CHAR[]>(return_length);
+                buffer_size = return_length;
+                if (!NT_SUCCESS(status) && status != STATUS_INFO_LENGTH_MISMATCH) return status;
+            }
             SystemInfo = std::move(buffer);
             if (nSize) *nSize = return_length;
-            return status;
+            return STATUS_SUCCESS;
         }
         template<class PRE>
-        INLINE void EnumThread(PRE pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
+        INLINE void EnumThread(const PRE& pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
             auto buffer = std::make_unique<CHAR[]>(0x1);
             if (!buffer) return;
             if (!NT_SUCCESS(ZwQuerySystemInformationEx(SystemProcessInformation, buffer))) return;
@@ -1952,10 +1927,12 @@ namespace stc {
                         _threadEntry.dwFlags = 0;
                         Thread thread(_threadEntry);
                         if (!thread.IsRunning()) continue;
-                        if (pre(thread) == EnumStatus::Break)break;
+                        auto status = pre(thread);
+                        if (status == EnumStatus::Break)break;
+                        if (status == EnumStatus::Continue) continue;
                     }
                 }
-                ULONG nextOffset = current->NextEntryOffset;
+                auto nextOffset = current->NextEntryOffset;
                 if (nextOffset == 0)break;
                 current = (PSYSTEM_PROCESS_INFORMATION)((ULONG_PTR)current + nextOffset);
             }
@@ -1987,19 +1964,20 @@ namespace stc {
             if (!m_bAttached) return RetType();
             uintptr_t _paramAddr = 0;
             auto threadData = Create<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
-            strcpy_s(threadData.eventname, "SetContextCallImpl");//event name
-            strcpy_s(threadData.funcname[0], "kernel32.dll");//kernel32.dll
-            strcpy_s(threadData.funcname[1], "OpenEventA");//OpenEventA
-            strcpy_s(threadData.funcname[2], "SetEvent");//SetEvent
-            strcpy_s(threadData.funcname[3], "CloseHandle");//CloseHandle
+            strcpy_s(threadData.eventname, xor_str("SetContextCallImpl"));//event name
+            strcpy_s(threadData.funcname[0], xor_str("kernel32.dll"));//kernel32.dll
+            strcpy_s(threadData.funcname[1], xor_str("OpenEventA"));//OpenEventA
+            strcpy_s(threadData.funcname[2], xor_str("SetEvent"));//SetEvent
+            strcpy_s(threadData.funcname[3], xor_str("CloseHandle"));//CloseHandle
             //创建事件  create event
             GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
             if (hEvent) {
                 threadData.pFunc[0] = (LPVOID)LoadLibraryA;
                 threadData.pFunc[1] = (LPVOID)GetProcAddress;
-                EnumThread([&](auto& thread)->EnumStatus {
+                EnumThread([&](Thread& thread)->EnumStatus {
                     thread.Suspend();//suspend thread   暂停线程
-                    auto ctx = thread.GetContext();//get context    获取上下文
+                    CONTEXT ctx{};
+                    if (thread.IsWait(&ctx)) return EnumStatus::Continue;
                     if (ctx.XIP) {
                         auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess);//allocate memory   分配内存
                         if (lpShell) {
@@ -2046,6 +2024,3 @@ namespace stc {
         }
     };
 }
-
-
-
