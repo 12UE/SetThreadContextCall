@@ -335,7 +335,6 @@ namespace stc {
             m_bOwner = false;
         }
     };
-    using NormalGenericHandle = GenericHandle<HANDLE, NormalHandle>;
     using NormalGenericHandleView = GenericHandle<HANDLE, HandleView<NormalHandle>>;
     typedef struct _PEB_LDR_DATA_64 {
         UINT Length;
@@ -460,7 +459,6 @@ namespace stc {
             bin(fullPaths[i]);
         }
     }
-
     static INLINE uintptr_t RVA2Offset(uintptr_t RVA, PIMAGE_NT_HEADERS pNtHeader, LPVOID Data) {
         auto pDosHeader = (PIMAGE_DOS_HEADER)Data;
         auto pSectionHeader = (PIMAGE_SECTION_HEADER)((SIZE_T)Data + pDosHeader->e_lfanew + sizeof(IMAGE_NT_HEADERS));
@@ -590,7 +588,7 @@ namespace stc {
     INLINE  bool IsFileExistA(const char* filename) {
         return GetFileAttributesA(filename) != INVALID_FILE_ATTRIBUTES;
     }
-    class FileMapView:public NormalGenericHandle{
+    class FileMapView:public GenericHandle<HANDLE, NormalHandle> {
         DWORD GetSize() {
             return ::GetFileSize(m_handle, NULL);
         }
@@ -1624,7 +1622,7 @@ return ret;
         0xc3								//retn
     };
 #endif
-    class Thread:public NormalGenericHandle {//把线程当做对象来处理  process thread as object
+    class Thread:public GenericHandle<HANDLE, NormalHandle> {//把线程当做对象来处理  process thread as object
         DWORD m_dwThreadId = 0;
         bool m_bAttached = false;
         std::atomic_int m_nSuspendCount = 0;
@@ -2056,7 +2054,6 @@ return ret;
             EnumThread([&](Thread& thread)->EnumStatus {
                 thread.Suspend();//suspend thread   暂停线程
                 CONTEXT ctx{};
-                if (thread.IsWait(&ctx)) return EnumStatus::Continue;
                 if (ctx.XIP) {
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess);
                     GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
