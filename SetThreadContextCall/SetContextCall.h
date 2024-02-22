@@ -1658,10 +1658,6 @@ return ret;
             return *this;
         }
         ~Thread() NOEXCEPT {
-            if (m_bAttached) {
-                m_nSuspendCount--;
-                if (m_nSuspendCount == 0)Resume();
-            }
         }
         INLINE HANDLE GetHandle() NOEXCEPT { return m_handle; }//获取线程句柄  get thread handle
         INLINE operator bool() { return IsRunning(); }
@@ -2094,6 +2090,7 @@ return ret;
                         ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
                         _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
                         thread.SetContext(ctx);//set context    设置上下文
+                        thread.Resume();
                         if constexpr (!std::is_same_v<RetType, void>) {
                             hEvent.Wait(INFINITE);//wait event  等待事件
                             _ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
