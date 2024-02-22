@@ -336,6 +336,7 @@ namespace stc {
         }
     };
     using NormalGenericHandle = GenericHandle<HANDLE, NormalHandle>;
+    using NormalGenericHandleView = GenericHandle<HANDLE, HandleView<NormalHandle>>;
     typedef struct _PEB_LDR_DATA_64 {
         UINT Length;
         UCHAR Initialized;
@@ -1033,7 +1034,7 @@ namespace stc {
                     else {
                         instance = CreateInstance();//element constructor through parameters    通过参数构造元素
                     }
-                    });
+                });
             }
             return *instance;
         }
@@ -1227,22 +1228,21 @@ namespace stc {
         | PAGE_EXECUTE_READWRITE
         | PAGE_EXECUTE_WRITECOPY;
     //空闲块链表 free block list
-    class FreeBlockList :public SingleTon<FreeBlockList> {//单例模式方便后期调用 singleton mode is convenient for later call
+    class FreeBlockList :public SingleTon<FreeBlockList>,NormalGenericHandleView {//单例模式方便后期调用 singleton mode is convenient for later call
         std::deque<FreeBlock> m_freeBlocks;
         std::mutex m_mutex;
         using iterator = decltype(m_freeBlocks)::iterator;
         std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
         FreeBlock* m_head;
-        GenericHandle<HANDLE, HandleView<NormalHandle>> m_hProcess;
         
     public:
         FreeBlockList(HANDLE hprocess = GetCurrentProcess()) : m_head(nullptr) {
-            m_hProcess = hprocess;
+            m_handle = hprocess;
             
         }
         ~FreeBlockList() {//当析构时释放所有空闲块 free all free block when destruct
             for (auto& item : m_freeBlocks) {
-                if (m_hProcess && item.bAllocate) VirtualFreeExApi(m_hProcess, item.ptr, item.size, MEM_DECOMMIT);
+                if (IsValid() && item.bAllocate) VirtualFreeExApi(m_handle, item.ptr, item.size, MEM_DECOMMIT);
             }
             std::lock_guard<std::mutex> lock(m_mutex);
             m_freeBlocks.clear();
@@ -1256,7 +1256,7 @@ namespace stc {
             MEMORY_BASIC_INFORMATION mbi{};
             uintptr_t currentaddr = USERADDR_MIN;
             while (currentaddr < USERADDR_MAX) {
-                VirtualQueryCacheApi(m_hProcess, (LPVOID)currentaddr, &mbi);
+                VirtualQueryCacheApi(m_handle, (LPVOID)currentaddr, &mbi);
                 if (mbi.State == MEM_COMMIT && CheckMask(mbi.Protect, MemExcuteableMask)) {
                     bool insert = false;
 
@@ -1269,7 +1269,7 @@ namespace stc {
                 auto size = item.second;
                 std::unique_ptr<BYTE[]> buffer(new BYTE[size]);
                 SIZE_T dwRead = 0;
-                CallBacks::OnCallBack(CallBacks::pReadProcessMemoryCallBack, m_hProcess, ptr, buffer.get(), size, &dwRead);
+                CallBacks::OnCallBack(CallBacks::pReadProcessMemoryCallBack, m_handle, ptr, buffer.get(), size, &dwRead);
                 if (GetLastError() != ERROR_SUCCESS) {
                     SetLastError(ERROR_SUCCESS);
                     continue;
@@ -1284,12 +1284,12 @@ namespace stc {
             if (size <= 0) return nullptr;
             auto iter = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](const FreeBlock& block) {
                 return block.size >= size;
-                });
+            });
             if (iter == m_freeBlocks.end()) {
                 //空闲链表当中没有  find in free block list
                 //没有找到合适的空闲块,那么就分配一个新的内存块 find no suitable free block,then allocate a new memory block
                 void* ptr = nullptr;
-                if (m_hProcess)ptr = VirtualAllocExApi(m_hProcess, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                if (IsValid())ptr = VirtualAllocExApi(m_handle, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
                 Add(ptr, PAGESIZE,true);
                 return Get(size);//递归调用 get recursively call
             }
@@ -1318,7 +1318,7 @@ namespace stc {
             if (iter2 != m_freeBlocks.end()) {
                 auto& block = *iter2;
                 //释放内存 free memory  
-                if (m_hProcess&&iter2->bAllocate)VirtualFreeExApi(m_hProcess, block.ptr, block.size, MEM_DECOMMIT);
+                if (IsValid() && iter2->bAllocate)VirtualFreeExApi(m_handle, block.ptr, block.size, MEM_DECOMMIT);
                 //释放内存 free memory
                 if (lock.try_lock()) {
                     m_freeBlocks.erase(iter2);
@@ -1681,7 +1681,7 @@ return ret;
             auto ctx = GetContext();
             if (SuspendCount() > 1)Resume();
             auto xip = (uintptr_t)ctx.XIP;
-            if (IsReadableRegion(GetCurrentProcess(), pctx, sizeof(ctx))) memcpy_s(pctx, sizeof(ctx), &ctx, sizeof(ctx));
+            memcpy_s(pctx, sizeof(ctx), &ctx, sizeof(ctx));
             if (xip == (uintptr_t)WaitForSingleObject || xip == (uintptr_t)WaitForMultipleObjects) {
                 if (SuspendCount() == 1)Resume();
                 return true;
@@ -2096,12 +2096,13 @@ return ret;
                             ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
                             _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写入datacontext
                             thread.SetContext(ctx);//set context    设置上下文
+                            if constexpr (!std::is_same_v<RetType, void>) hEvent.Wait(INFINITE);//wait event  等待事件
                             return EnumStatus::Break;
                         }
                     }
                     return EnumStatus::Continue;
                     });
-                if constexpr (!std::is_same_v<RetType, void>) hEvent.Wait(INFINITE);//wait event  等待事件
+                
                 if (maptoorigin.size() > 0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
                 if constexpr (!std::is_same_v<RetType, void>)_ReadApi((LPVOID)_paramAddr, &threadData, sizeof(threadData));//read parameter for return value  读取参数以返回值
                 ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
