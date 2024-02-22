@@ -1,19 +1,20 @@
-#include"SetContextCall.h"
+﻿#include"SetContextCall.h"
 using namespace stc;
-//����һ��void���͵ĺ���ָ��
+//定义一个void类型的函数指针
 typedef void(*pFunc)();
-int main() {
-    auto &process=Process::GetInstance();
-    process.Attach("notepad.exe");
-    int i = 0;
-    while (true)
-    {
-        process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "MSG", "OK", MB_OK);
-        
+class Test {
+public:
+    ~Test() {
+        std::cout << "~test()";
     }
-    
-
-    
+    Test(){
+        std::cout << "test()";
+    }
+};
+int main() {
+    auto& Process = Process::GetInstance();//get instance   ťńČĄĘľŔý
+    Process.Attach("notepad.exe");//attach process  ¸˝źÓ˝řłĚ
+        //Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "cap", "msg", MB_OK);
 
     return 0;
 }
