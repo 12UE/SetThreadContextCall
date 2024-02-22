@@ -2104,7 +2104,6 @@ return ret;
                 return EnumStatus::Continue;
             });
             if (maptoorigin.size() > 0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
-            
             ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
             maptoorigin.clear();//clear map  清除map
             if constexpr (!std::is_same_v<RetType, void>)return threadData.retdata;//return value    返回值
