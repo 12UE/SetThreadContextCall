@@ -1856,7 +1856,6 @@ namespace stc {
                 }
             }
         }
-
         template<typename T>
         INLINE void preprocessparameter(T& arg) NOEXCEPT {}
         INLINE void preprocessparameter(const char*& arg) NOEXCEPT {
@@ -2077,7 +2076,7 @@ namespace stc {
                 auto ctx = thread.GetContext();//获取上下文
                 if (ctx.XIP) {
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess);
-                    Event myevent(threadData.eventname, false);
+                    Event myevent(threadData.eventname);
                     if (lpShell&& myevent) {
                         m_vecAllocMem.emplace_back(lpShell);//
                         DATA_CONTEXT dataContext{};
