@@ -1050,6 +1050,7 @@ namespace stc {
             auto objptr = obj.get();    //获得对象的指针 get object pointer
             InstanceMangerBase<T>::GetInstance().InsertObj(objptr); //获得映射对象的指针 get map object pointer
             InstanceMangerBase<T>::GetInstance().InsertHandle(obj.hFile);   //获得映射对象的句柄 get map object handle
+            
             return objptr;
         }
         template <class... Args>
@@ -1265,7 +1266,7 @@ namespace stc {
         std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
         FreeBlock* m_head;
     public:
-        FreeBlockList(HANDLE hprocess = GetCurrentProcess()) : m_head(nullptr) {
+        FreeBlockList(HANDLE hprocess) : m_head(nullptr) {
             m_handle = hprocess;
 
         }
@@ -1317,8 +1318,8 @@ namespace stc {
             if (iter == m_freeBlocks.end()) {
                 //空闲链表当中没有  find in free block list
                 //没有找到合适的空闲块,那么就分配一个新的内存块 find no suitable free block,then allocate a new memory block
-                void* ptr = nullptr;
-                if (IsValid())ptr = VirtualAllocExApi(m_handle, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                SetLastError(0);
+                auto ptr = VirtualAllocExApi(m_handle, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
                 Add(ptr, PAGESIZE,true);
                 return Get(size);//递归调用 get recursively call
             }
@@ -1417,12 +1418,6 @@ namespace stc {
             uintptr_t ptr = NULL;
             ptr = (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize);
             SpaceSize = dwSize;
-            MEMORY_BASIC_INFORMATION mbi{};
-            VirtualQueryExApi(m_hProcess, (LPVOID)ptr, &mbi, sizeof(mbi));
-            if (!CheckMask(mbi.Protect, PAGE_EXECUTE_READWRITE)) {
-                DWORD dwoldprotect = 0;
-                VirtualProtectExApi(m_hProcess, (LPVOID)ptr, dwSize, PAGE_EXECUTE_READWRITE, &dwoldprotect);
-            }
             return ptr;
         }
         INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//远程释放内存 remote free memory
@@ -1478,7 +1473,7 @@ namespace stc {
                 BaseAddress = nullptr;
             }
         }
-        INLINE operator bool() NOEXCEPT { return IsReadableRegion(m_hProcess, BaseAddress, SpaceSize); }
+        INLINE operator bool() NOEXCEPT { return USERADDR_MAX> (uintptr_t)BaseAddress&& (uintptr_t)BaseAddress>=USERADDR_MIN; }
         //判等
         INLINE bool operator==(const Shared_Ptr& other) NOEXCEPT { return BaseAddress == other.BaseAddress; }
         //判不等
@@ -1840,7 +1835,7 @@ namespace stc {
             if (iter != maptoorigin.end()) {
                 LPVOID OriginAddr = iter->second;//original address   原始地址
                 if (m_RunningMode == EnumRunningMode::POINTER_READ) {
-                    _ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address    从分配地址读取值到原始地址
+                    ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address    从分配地址读取值到原始地址
                 }
             }
         }
@@ -1851,14 +1846,14 @@ namespace stc {
             auto nlen = (int)strlen(arg) + 1;
             auto p = make_Shared<char>(m_hProcess);
             m_vecAllocMem.push_back(p);
-            _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
+            WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
             arg = (const char*)p.raw();
         }//process const char* parameter    处理const char*参数
         INLINE void preprocessparameter(const wchar_t*& arg) {
             auto nlen = (int)wcslen(arg) + 1;
             auto p = make_Shared<wchar_t>(m_hProcess, nlen * sizeof(wchar_t));
             m_vecAllocMem.push_back(p);
-            _WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(wchar_t));
+            WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(wchar_t));
             arg = (const wchar_t*)p.raw();
         }//process const wchar_t* parameter   处理const wchar_t*参数
         template<typename T>
@@ -1868,7 +1863,7 @@ namespace stc {
                 auto p = make_Shared<BYTE>(m_hProcess, Size);
                 if (p) {
                     m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory   emplace back到vector中避免内存泄漏可以通过clearmemory清除
-                    _WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer   写入值到分配地址，因为参数是指针
+                    WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer   写入值到分配地址，因为参数是指针
                     if (m_RunningMode == EnumRunningMode::POINTER_READ)maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address   保存原始地址和分配地址
                     ptr = (T)p.raw();//set parameter to allocated address   设置参数为分配地址
                 }
@@ -1949,7 +1944,7 @@ namespace stc {
             }
         }
         //readapi
-        INLINE ULONG _ReadApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
+        INLINE ULONG ReadApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
             if (m_bAttached) {
                 SIZE_T bytesRead = 0;
                 CallBacks::OnCallBack(CallBacks::pReadProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
@@ -1958,7 +1953,7 @@ namespace stc {
             return 0;
         }
         //writeapi  
-        INLINE ULONG _WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
+        INLINE ULONG WriteApi(_In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
             if (m_bAttached) {
                 SIZE_T bytesWritten = 0;
                 CallBacks::OnCallBack(CallBacks::pWriteProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
@@ -2000,7 +1995,7 @@ namespace stc {
             auto current = (PSYSTEM_PROCESS_INFORMATION)buffer.get();
             while (TRUE) {
                 for (ULONG i = 0; i < current->NumberOfThreads; i++) {
-                    auto threadInfo = (PSYSTEM_THREAD_INFORMATION)((ULONG_PTR)current + sizeof(SYSTEM_PROCESS_INFORMATION) + i * sizeof(SYSTEM_THREAD_INFORMATION));
+                    auto threadInfo = (PSYSTEM_THREAD_INFORMATION)((ULONG_PTR)current + FIELD_OFFSET(SYSTEM_PROCESS_INFORMATION, Threads) + i * sizeof(SYSTEM_THREAD_INFORMATION));
                     if (HandleToULong(current->UniqueProcessId) == m_pid) {
                         THREADENTRY32 _threadEntry{ sizeof(THREADENTRY32), };
                         _threadEntry.th32ThreadID = HandleToULong(threadInfo->ClientId.UniqueThread);
@@ -2080,7 +2075,7 @@ namespace stc {
                         auto lpFunction = make_Shared<BYTE>(m_hProcess, length);//allocate memory for function  分配内存
                         if (!lpFunction)return EnumStatus::Continue;
                         m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
-                        _WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
+                        WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
                         dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address  设置函数地址
                         dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
                         using parametertype = decltype(threadData);
@@ -2089,18 +2084,18 @@ namespace stc {
                             auto lpParameter = make_Shared<parametertype>(m_hProcess);//allocate memory for parameter    分配内存
                             if (lpParameter) {
                                 m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
-                                _WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写参数
+                                WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写参数
                                 dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
                                 parameter = lpParameter.raw();
                             }
                         }
                         ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
-                        _WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
+                        WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();
                         if constexpr (!std::is_same_v<RetType, void>) {
                             myevent.Wait(INFINITE);//等待事件被触发
-                            _ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
+                            ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
                         } 
                         return EnumStatus::Break;
                     }
