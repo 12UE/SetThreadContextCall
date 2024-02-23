@@ -1635,7 +1635,7 @@ namespace stc {
     };
 #endif
     class Thread:public GenericHandle<HANDLE, NormalHandle> {//把线程当做对象来处理  process thread as object
-        DWORD m_dwThreadId = 0;
+        DWORD m_dwThreadId = 0;//这个类继承了智能句柄类,所以不需要手动关闭句柄  this class inherit from smart handle class,so no need to close handle manually
         bool m_bAttached = false;
         std::atomic_int m_nSuspendCount = 0;
     public:
@@ -1696,12 +1696,16 @@ namespace stc {
             if (m_bAttached) {
                 context.ContextFlags = CONTEXT_FULL;
                 CallBacks::OnCallBack(CallBacks::pGetThreadContext, m_handle, &context);
+                Suspend();
             }
             return context;
         }
         //设置线程的上下文  set thread context
         INLINE void SetContext(const CONTEXT& context) NOEXCEPT {
-            if (m_bAttached) CallBacks::OnCallBack(CallBacks::pSetThreadContext, m_handle, (PCONTEXT)&context);
+            if (m_bAttached) {
+                CallBacks::OnCallBack(CallBacks::pSetThreadContext, m_handle, (PCONTEXT)&context);
+                Resume();
+            }
         }
         //暂停线程执行  suspend thread execution
         INLINE void Suspend() {
@@ -2069,7 +2073,6 @@ namespace stc {
             threadData.pFunc[0] = (LPVOID)LoadLibraryA;
             threadData.pFunc[1] = (LPVOID)GetProcAddress;
             EnumThread([&](Thread& thread)->EnumStatus {
-                thread.Suspend();//suspend thread   暂停线程
                 auto ctx = thread.GetContext();//获取上下文
                 if (ctx.XIP) {
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess);
@@ -2104,7 +2107,6 @@ namespace stc {
                         ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
                         WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
                         thread.SetContext(ctx);//set context    设置上下文
-                        thread.Resume();
                         if constexpr (!std::is_same_v<RetType, void>) {
                             myevent.Wait(INFINITE);//等待事件被触发
                             ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
