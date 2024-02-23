@@ -1544,7 +1544,11 @@ namespace stc {
         template <class Fn, class T>
         T ThreadFunction(void* param) noexcept {
             auto threadData = static_cast<ThreadData<Fn, T>*>(param);
-            threadData->retdata = threadData->fn();
+            if constexpr (!std::is_same_v<T, void>) {
+                threadData->retdata = threadData->fn();
+            }else {
+                threadData->fn();
+            }
             auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
             auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
             //加载OpenEventA
@@ -1564,23 +1568,27 @@ namespace stc {
         decltype(auto) ThreadFunction2(void* param) noexcept {
             auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
             auto ret = [threadData](auto index) {
-                threadData->retdata = std::apply(threadData->fn, threadData->params);
-                return threadData->retdata;
-                }(std::make_index_sequence<sizeof...(Args)>{});
-                auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
-                auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
-                //加载OpenEventA
-                auto hEvent = pLoadLibrary(threadData->funcname[0]);
-                auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
-                //打开事件
-                auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
-                //设置事件
-                auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
-                pSetEvent(hEventHandle);
-                //closehandle
-                auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(hEvent, threadData->funcname[3]);
-                pCloseHandle(hEventHandle);
-                return ret;
+                if constexpr (!std::is_same_v<T, void>) {
+                    threadData->retdata = std::apply(threadData->fn, threadData->params);
+                    return threadData->retdata;
+                }else {
+                    std::apply(threadData->fn, threadData->params);
+                }
+            }(std::make_index_sequence<sizeof...(Args)>{});
+            auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
+            auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+            //加载OpenEventA
+            auto hEvent = pLoadLibrary(threadData->funcname[0]);
+            auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
+            //打开事件
+            auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+            //设置事件
+            auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+            pSetEvent(hEventHandle);
+            //closehandle
+            auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(hEvent, threadData->funcname[3]);
+            pCloseHandle(hEventHandle);
+            return ret;
         }
     }
     //代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
