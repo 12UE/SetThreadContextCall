@@ -1555,6 +1555,9 @@ namespace stc {
             //设置事件
             auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);
             pSetEvent(hEventHandle);
+            //closehandle
+            auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);
+            pCloseHandle(hEventHandle);
             return threadData->retdata;
         }
         template <class Fn, class T, class... Args>
@@ -1574,6 +1577,9 @@ namespace stc {
                 //设置事件
                 auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
                 pSetEvent(hEventHandle);
+                //closehandle
+                auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(hEvent, threadData->funcname[3]);
+                pCloseHandle(hEventHandle);
                 return ret;
         }
     }
