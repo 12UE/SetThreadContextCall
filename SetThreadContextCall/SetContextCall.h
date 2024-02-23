@@ -267,7 +267,7 @@ namespace stc {
         INLINE bool IsValid()NOEXCEPT { return Traits::IsValid(m_handle); }
         T m_handle = Traits::InvalidHandle();
         GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}//构造 m_bOwner默认为true construct m_bOwner default is true
-        ~GenericHandle() {
+        virtual ~GenericHandle() {
             Release();
         }
         GenericHandle(GenericHandle&) = delete;//禁止拷贝构造函数 disable copy constructor
@@ -337,6 +337,7 @@ namespace stc {
     };
     class Event:public GenericHandle<HANDLE, NormalHandle> {
     public:
+        Event() = default;//默认构造
         Event(const char* EventName,bool bManualReset=false) {
             m_handle = CreateEventA(NULL, bManualReset, FALSE, EventName);
         }
@@ -643,7 +644,7 @@ namespace stc {
             EnsureDirectoryExists(xor_str("Cache"));
             //如果当前是64位就读取Cache//Functioncache64.bin 否则读取Cache//Functioncache32.bin
             std::string path{};
-            path.reserve(0x100);
+            path.reserve(MAX_PATH);
             BOOL IsCurrentProcess = TRUE;
             BOOL isWow64 = FALSE; // 定义一个 BOOL 类型的变量来接收返回值
             if (IsWow64Process(GetCurrentProcess(), &isWow64))path = (isWow64) ? xor_str("Cache//Functioncache32.bin") : xor_str("Cache//Functioncache64.bin");
@@ -1534,67 +1535,41 @@ namespace stc {
         using POPENEVENTA = HANDLE(WINAPI*)(DWORD dwDesiredAccess, BOOL bInheritHandle, LPCSTR lpName);
         using PSETEVENT = BOOL(WINAPI*)(HANDLE hEvent);
         using PCLOSEHANDLE = BOOL(WINAPI*)(HANDLE hObject);
-        template<class Fn, class RetType, class ...Arg>
-        INLINE AUTOTYPE CreatePtr(void* param) {
-            if constexpr (sizeof...(Arg) > 0) {
-                return static_cast<ThreadData2<Fn, RetType, Arg...>*>(param);
-            }
-            else {
-                return static_cast<ThreadData<Fn, RetType>*>(param);
-            }
-        }
-        template <class Fn, class T, class ...Args>//FN是函数T是返回值
-        DECLSPEC_NOINLINE AUTOTYPE ThreadFunction(void* param) noexcept {
-            auto threadData = CreatePtr<Fn, T, Args...>(param);;
-            if constexpr (std::is_same_v<T, void>) {
-                [threadData] (auto index) NOEXCEPT{
-                    if constexpr (sizeof...(Args) > 0) {
-                        std::apply(threadData->fn, threadData->params);
-                    }
-else {
-   threadData->fn();
-}
-                }(std::make_index_sequence<sizeof...(Args)>{});
-            }
-            else {
-                threadData->retdata = [threadData](auto index) NOEXCEPT{
-                    using RetType = decltype(threadData->retdata);
-                    RetType ret{};
-                    if constexpr (sizeof...(Args) > 0) {
-                        ret = std::apply(threadData->fn, threadData->params);
-                    }
-else {
-   ret = threadData->fn();
-}
-return ret;
-                }(std::make_index_sequence<sizeof...(Args)>{});
-            }
+        template <class Fn, class T>
+        T ThreadFunction(void* param) noexcept {
+            auto threadData = static_cast<ThreadData<Fn, T>*>(param);
+            threadData->retdata = threadData->fn();
             auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
             auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+            //加载OpenEventA
             auto ntdll = pLoadLibrary(threadData->funcname[0]);
-            //通过名字打开对应的事件 open event by name 名字已经事先定义好 name is defined in advance
-            auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);//加载OpenEventA    load OpenEventA
-            auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname); //打开事件  open event
-            auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);//设置事件  set event
+            auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
+            //打开事件
+            auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+            //设置事件
+            auto pSetEvent = (PSETEVENT)pGetProAddress(ntdll, threadData->funcname[2]);
             pSetEvent(hEventHandle);
-            auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);//关闭句柄  close handle
-            pCloseHandle(hEventHandle);
+            return threadData->retdata;
         }
-    }
-    template<class T>
-    static inline T* exchange(T*& obj) noexcept{
-        static std::mutex mtx;
-        std::lock_guard<std::mutex> lock(mtx);  //加锁 lock 
-        // 直接在堆上分配内存，不调用T的构造函数 directing allocate memory on heap,not call T's constructor
-        auto ptr = static_cast<T*>(malloc(sizeof(T)));
-        if (!ptr)return nullptr;
-        // 使用memcpy拷贝对象数据   copy object data using memcpy
-        memcpy(ptr, obj, sizeof(T));
-        // 释放原对象的内存，不调用析构函数 free original object's memory,not call destructor
-        memset(obj, 0, sizeof(T));//清除原始空间    clear original space
-        free(obj);
-        obj = nullptr;  //置空原始指针  set original pointer to nullptr
-        return ptr; //返回新的指针  return new pointer
+        template <class Fn, class T, class... Args>
+        decltype(auto) ThreadFunction2(void* param) noexcept {
+            auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
+            auto ret = [threadData](auto index) {
+                threadData->retdata = std::apply(threadData->fn, threadData->params);
+                return threadData->retdata;
+                }(std::make_index_sequence<sizeof...(Args)>{});
+                auto pLoadLibrary = (PLOADLIBRARYA)threadData->pFunc[0];
+                auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
+                //加载OpenEventA
+                auto hEvent = pLoadLibrary(threadData->funcname[0]);
+                auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
+                //打开事件
+                auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+                //设置事件
+                auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
+                pSetEvent(hEventHandle);
+                return ret;
+        }
     }
     //代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
     typedef struct DATA_CONTEXT {
@@ -2023,7 +1998,7 @@ return ret;
                         _threadEntry.tpDeltaPri = threadInfo->Priority;
                         _threadEntry.dwFlags = 0;
                         Thread thread(_threadEntry);
-                        if (!thread.IsRunning()) continue;
+                        if (!thread.IsRunning()||!thread) continue;
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
@@ -2055,6 +2030,14 @@ return ret;
                 return ThreadData<Fn, RetType>{};
             }
         }
+        template<class Fn, class RetType, class ...Arg>
+        INLINE AUTOTYPE CreateFunc() {
+            if constexpr (sizeof...(Arg) > 0) {
+                return &internals::ThreadFunction2<Fn, RetType, Arg...>;
+            }else {
+                return &internals::ThreadFunction<Fn, RetType>;
+            }
+        }
         template<class _Fn, class ...Arg>
         AUTOTYPE SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
             using RetType = decltype(_Fx(args...));//return type is common type or not
@@ -2080,7 +2063,7 @@ return ret;
                         preprocess(std::forward<Arg&>(args)...);//process parameter  处理参数
                         threadData.fn = _Fx;
                         if constexpr (sizeof...(Arg) > 0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
-                        auto pFunction = &internals::ThreadFunction<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;
+                        auto pFunction = CreateFunc<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
                         //get function address  获取函数地址
                         auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
                         auto lpFunction = make_Shared<BYTE>(m_hProcess, length);//allocate memory for function  分配内存
@@ -2105,8 +2088,8 @@ return ret;
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();
                         if constexpr (!std::is_same_v<RetType, void>) {
-                            myevent.Wait(INFINITE);
-                            if constexpr(sizeof...(Arg)>0)_ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
+                            myevent.Wait(INFINITE);//等待事件被触发
+                            _ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
                         } 
                         return EnumStatus::Break;
                     }
