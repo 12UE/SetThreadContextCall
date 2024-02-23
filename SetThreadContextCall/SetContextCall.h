@@ -140,7 +140,7 @@ namespace stc {
         LARGE_INTEGER OtherTransferCount;
         SYSTEM_THREAD_INFORMATION Threads[1];
     } SYSTEM_PROCESS_INFORMATION, * PSYSTEM_PROCESS_INFORMATION;
-    typedef NTSTATUS(NTAPI* NtQuerySystemInformationType)(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength);
+    
     static INLINE PIMAGE_NT_HEADERS GetNtHeader(LPVOID buffer) {
         auto pDosHeader = (PIMAGE_DOS_HEADER)buffer;
         if (!pDosHeader) return nullptr;
@@ -181,6 +181,7 @@ namespace stc {
     }
     INLINE NTSTATUS  ZwQuerySystemInformationApi(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength
     ) {
+        typedef NTSTATUS(NTAPI* NtQuerySystemInformationType)(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength);
         static auto ntdll = GetModuleHandleA(xor_str("ntdll.dll"));
         NTSTATUS status = STATUS_INVALID_PARAMETER;
         if (ntdll) {
@@ -217,7 +218,7 @@ namespace stc {
         std::function<BOOL(HANDLE, LPCVOID, PMEMORY_BASIC_INFORMATION, SIZE_T)> pVirtualQueryEx = VirtualQueryEx;
         std::function<DWORD(HANDLE, DWORD)> pWaitForSingleObject = WaitForSingleObject;
         std::function<void(HANDLE)> pCloseHandle = CloseHandle;
-        std::function<HANDLE(DWORD dwDesiredAccess, BOOL, DWORD)> pOpenThread = OpenThread;
+        std::function<HANDLE(DWORD, BOOL, DWORD)> pOpenThread = OpenThread;
         std::function<BOOL(HANDLE, LPDWORD)> pGetExitCodeThread = GetExitCodeThread;
         //设置获取线程上下文的回调  set get thread context callback
         std::function<BOOL(HANDLE, LPCONTEXT)> pGetThreadContext = GetThreadContext;
