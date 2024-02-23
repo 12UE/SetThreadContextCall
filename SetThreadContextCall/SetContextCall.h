@@ -1542,7 +1542,7 @@ namespace stc {
         using PSETEVENT = BOOL(WINAPI*)(HANDLE hEvent);
         using PCLOSEHANDLE = BOOL(WINAPI*)(HANDLE hObject);
         template <class Fn, class T>
-        T ThreadFunction(void* param) noexcept {
+        decltype(auto) ThreadFunction(void* param) noexcept {
             auto threadData = static_cast<ThreadData<Fn, T>*>(param);
             if constexpr (!std::is_same_v<T, void>) {
                 threadData->retdata = threadData->fn();
@@ -1562,12 +1562,11 @@ namespace stc {
             //closehandle
             auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(ntdll, threadData->funcname[3]);
             pCloseHandle(hEventHandle);
-            return threadData->retdata;
         }
         template <class Fn, class T, class... Args>
         decltype(auto) ThreadFunction2(void* param) noexcept {
             auto threadData = static_cast<ThreadData2<Fn, T, Args...>*>(param);
-            auto ret = [threadData](auto index) {
+            [threadData](auto index) {
                 if constexpr (!std::is_same_v<T, void>) {
                     threadData->retdata = std::apply(threadData->fn, threadData->params);
                     return threadData->retdata;
@@ -1588,7 +1587,6 @@ namespace stc {
             //closehandle
             auto pCloseHandle = (PCLOSEHANDLE)pGetProAddress(hEvent, threadData->funcname[3]);
             pCloseHandle(hEventHandle);
-            return ret;
         }
     }
     //代码来自于<加密与解密>有关劫持线程注入的代码 第473页 code from <加密与解密> about thread hijacking inject page 473
@@ -2080,7 +2078,7 @@ namespace stc {
                         m_vecAllocMem.emplace_back(lpShell);//
                         DATA_CONTEXT dataContext{};
                         memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-                        preprocess(std::forward<Arg&>(args)...);//process parameter  处理参数
+                        if constexpr(sizeof...(Arg)>0)preprocess(std::forward<Arg&>(args)...);//process parameter  处理参数
                         threadData.fn = _Fx;
                         if constexpr (sizeof...(Arg) > 0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
                         auto pFunction = CreateFunc<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
