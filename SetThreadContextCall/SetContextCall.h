@@ -22,7 +22,7 @@
 #include <unordered_set>
 #include <winnt.h>
 #include <any>
-#define INLINE __forceinline
+#define INLINE inline
 #define NOEXCEPT noexcept   //不抛出异常 no throw exception
 #define MAXKEYSIZE 0x10000
 namespace stc {
@@ -248,6 +248,7 @@ namespace stc {
         INLINE static HANDLE InvalidHandle()NOEXCEPT { return INVALID_HANDLE_VALUE; }   //句柄的无效值 invalid value of handle
         INLINE static bool IsValid(HANDLE handle)NOEXCEPT { return handle != InvalidHandle() && handle && (uintptr_t)handle > 0; }   //判断句柄是否有效 judge whether handle is valid
         INLINE static DWORD Wait(HANDLE handle, DWORD time)NOEXCEPT { return CallBacks::OnCallBack(CallBacks::pWaitForSingleObject, handle, time); }//单位:毫秒 unit:ms    等待句柄 wait handle
+
     };
     struct FileHandle :public NormalHandle {
         INLINE static void Close(HANDLE& handle)NOEXCEPT {
@@ -267,7 +268,7 @@ namespace stc {
         INLINE bool IsValid()NOEXCEPT { return Traits::IsValid(m_handle); }
         T m_handle = Traits::InvalidHandle();
         GenericHandle(const T& handle = Traits::InvalidHandle(), bool bOwner = true) :m_handle(handle), m_bOwner(bOwner) {}//构造 m_bOwner默认为true construct m_bOwner default is true
-        virtual ~GenericHandle() {
+        virtual ~GenericHandle() {//虚析构能让子类析构之后再析构父类,防止内存泄漏 virtual destructor can make the subclass destruct after the parent class destruct, prevent memory leak
             Release();
         }
         GenericHandle(GenericHandle&) = delete;//禁止拷贝构造函数 disable copy constructor
@@ -613,16 +614,23 @@ namespace stc {
         DWORD GetSize() {
             return ::GetFileSize(m_handle, NULL);
         }
+        void OpenView() {
+            if (IsValid()) {
+                m_FileSize = GetSize();
+                mapview = MapViewOfFile(m_handle, FILE_MAP_READ, 0, 0, 0);
+            }
+        }
         void* mapview = nullptr;
         DWORD m_FileSize = 0;
     public:
         FileMapView(HANDLE hFile, DWORD PROTECT) {
             m_handle = hFile;
             m_handle = CreateFileMappingA(hFile, NULL, PROTECT, 0, 0, NULL);
-            if (IsValid()) {
-                m_FileSize = GetSize();
-                mapview = MapViewOfFile(m_handle, FILE_MAP_READ, 0, 0, 0);
-            }
+            OpenView();
+        }
+        FileMapView(DWORD Access,const char* MapName) {
+            m_handle=OpenFileMappingA(Access, FALSE, MapName);
+            OpenView();
         }
         ~FileMapView() {
             if (mapview)UnmapViewOfFile(mapview);
@@ -788,6 +796,9 @@ namespace stc {
             PVOID Reserved6[4];
             PVOID TlsExpansionSlots;
         } TEB, * PTEB;
+#ifndef _WIN64
+        unsigned __int64 __readgsqword(unsigned long);
+#endif
         __forceinline struct _TEB* NtCurrentTeb(VOID) { return (struct _TEB*)__readgsqword(FIELD_OFFSET(NT_TIB, Self)); }
         INLINE void* GetRoutine(const char* _functionName, const char* _moduleName = "") {
             static std::unordered_map<std::string, void*> m_procAddrs;
@@ -1600,7 +1611,7 @@ namespace stc {
         0xc3,								//retn		
     };
 #else
-    INLINE BYTE ContextInjectShell[] = {	//x86.asm 书中的代码  the code in the book
+    BYTE ContextInjectShell[] = {	//x86.asm 书中的代码  the code in the book
         0x50,								//push	eax
         0x60,								//pushad
         0x9c,								//pushfd
@@ -1660,13 +1671,12 @@ namespace stc {
             }
             return false;
         }
-        INLINE bool IsWait(CONTEXT* pctx = nullptr) {
+        INLINE bool IsWait() {
             if (!m_bAttached) return false;
             if (!SuspendCount())Suspend();
             auto ctx = GetContext();
             if (SuspendCount() > 1)Resume();
             auto xip = (uintptr_t)ctx.XIP;
-            memcpy_s(pctx, sizeof(ctx), &ctx, sizeof(ctx));
             if (xip == (uintptr_t)WaitForSingleObject || xip == (uintptr_t)WaitForMultipleObjects) {
                 if (SuspendCount() == 1)Resume();
                 return true;
@@ -1894,34 +1904,35 @@ namespace stc {
         INLINE void ChangeMode(const EnumRunningMode& Mode) NOEXCEPT {
             m_RunningMode = Mode;
         }
-        INLINE AUTOTYPE SetContextCall(auto&& _Fx, auto&& ...args) NOEXCEPT {
+        template<typename ...Arg>
+        INLINE AUTOTYPE SetContextCall(auto&& _Fx, Arg&& ...args) NOEXCEPT {
             static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
             //获得函数体的返回值
             using RetType = decltype(_Fx(args...));
             if constexpr (!std::is_same_v<RetType, void>) {
-                auto retdata = SetContextCallImpl(_Fx, args...);//返回值保存到retdata return value save to retdata
+                auto retdata = SetContextCallImpl(_Fx, std::forward<Arg>(args)...);//返回值保存到retdata return value save to retdata
                 std::promise<RetType> promise{};//承诺对象
                 std::future<RetType> fut = promise.get_future();
                 promise.set_value(retdata);//设置承诺值 set promise value
                 return fut;
             }
             else {
-                SetContextCallImpl(_Fx, args...);
+                SetContextCallImpl(_Fx, std::forward<Arg>(args)...);
             }
         }
         template<class T, class ...Arg>
         using Functype = T(__stdcall*)(Arg...);
         //T 是返回值类型 T is return value type
         template<class T, class ...Arg>
-        INLINE AUTOTYPE SetContextExportedCall(std::string_view funcname, __in Arg ...args) {
+        INLINE AUTOTYPE SetContextExportedCall(std::string_view funcname, __in Arg&& ...args) {
             auto lpFunction = GetRoutine(funcname.data());
-            return SetContextExportedCallImpl<Functype>(lpFunction, args...);
+            return SetContextExportedCallImpl<Functype>(lpFunction, std::forward<Arg>(args)...);
         }
         //T 是返回值类型 T is return value type
         template<class T, class ...Arg>
         //未导出函数调用  call unexported function
-        INLINE AUTOTYPE SetContextUndocumentedCall(LPVOID lpfunction, __in Arg ...args) {
-            return SetContextUndocumentedCallImpl<Functype>(lpfunction, args...);
+        INLINE AUTOTYPE SetContextUndocumentedCall(LPVOID lpfunction, __in Arg&& ...args) {
+            return SetContextUndocumentedCallImpl<Functype>(lpfunction, std::forward<Arg>(args)...);
         }
         template<class T>INLINE static T TONULL() NOEXCEPT { return  reinterpret_cast<T>(0); }
     private:
