@@ -1844,7 +1844,7 @@ namespace stc {
         INLINE void preprocessparameter(T& arg) NOEXCEPT {}
         INLINE void preprocessparameter(const char*& arg) NOEXCEPT {
             auto nlen = (int)strlen(arg) + 1;
-            auto p = make_Shared<char>(m_hProcess);
+            auto p = make_Shared<char>(m_hProcess, nlen * sizeof(char));
             m_vecAllocMem.push_back(p);
             WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
             arg = (const char*)p.raw();

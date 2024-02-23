@@ -15,7 +15,7 @@ public:
 int main() {
     auto& Process = Process::GetInstance();//get instance   ťńČĄĘľŔý
     Process.Attach("notepad.exe");//attach process  ¸˝źÓ˝řłĚ
-        Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "cap", "msg", MB_OK);
+        Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "cap", "ok", MB_OK);
         std::cout << "done";
     return 0;
 }
