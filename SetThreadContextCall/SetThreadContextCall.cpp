@@ -11,6 +11,7 @@ public:
         std::cout << "test()";
     }
 };
+
 int main() {
     auto& Process = Process::GetInstance();//get instance   ťńČĄĘľŔý
     Process.Attach("notepad.exe");//attach process  ¸˝źÓ˝řłĚ

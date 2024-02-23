@@ -216,7 +216,7 @@ namespace stc {
         //回调用于查询内存信息  callback for query memory information
         std::function<BOOL(HANDLE, LPCVOID, PMEMORY_BASIC_INFORMATION, SIZE_T)> pVirtualQueryEx = VirtualQueryEx;
         std::function<DWORD(HANDLE, DWORD)> pWaitForSingleObject = WaitForSingleObject;
-        std::function<void(HANDLE&)> pCloseHandle = CloseHandle;
+        std::function<void(HANDLE)> pCloseHandle = CloseHandle;
         std::function<HANDLE(DWORD dwDesiredAccess, BOOL, DWORD)> pOpenThread = OpenThread;
         std::function<BOOL(HANDLE, LPDWORD)> pGetExitCodeThread = GetExitCodeThread;
         //设置获取线程上下文的回调  set get thread context callback
@@ -314,7 +314,7 @@ namespace stc {
         }
         INLINE void Release() {
             //仅仅refcount>=0的时候
-            if (refcount >= 0) refcount--;
+            if (refcount > 0) refcount--;
             if (refcount == 0) {
                 if (m_bOwner && IsValid()) {//当句柄的所有者为true并且句柄有效时 When the handle owner is true and the handle is valid
                     Traits::Close(m_handle);//关闭句柄 close handle
@@ -335,7 +335,27 @@ namespace stc {
             m_bOwner = false;
         }
     };
-    using NormalGenericHandleView = GenericHandle<HANDLE, HandleView<NormalHandle>>;
+    class Event:public GenericHandle<HANDLE, NormalHandle> {
+    public:
+        Event(const char* EventName,bool bManualReset=false) {
+            m_handle = CreateEventA(NULL, bManualReset, FALSE, EventName);
+        }
+        void OpenEvent(const char* EventName) {
+            m_handle = OpenEventA(EVENT_ALL_ACCESS, FALSE, EventName);
+        }
+        //set
+        INLINE void Set()NOEXCEPT {
+            SetEvent(m_handle);
+        }
+        //reset
+        INLINE void Reset()NOEXCEPT {
+            ResetEvent(m_handle);
+        }
+        //pulse
+        INLINE void Pulse()NOEXCEPT {
+            PulseEvent(m_handle);
+        }
+    };
     typedef struct _PEB_LDR_DATA_64 {
         UINT Length;
         UCHAR Initialized;
@@ -1226,17 +1246,16 @@ namespace stc {
         | PAGE_EXECUTE_READWRITE
         | PAGE_EXECUTE_WRITECOPY;
     //空闲块链表 free block list
-    class FreeBlockList :public SingleTon<FreeBlockList>,NormalGenericHandleView {//单例模式方便后期调用 singleton mode is convenient for later call
+    class FreeBlockList :public SingleTon<FreeBlockList>, GenericHandle<HANDLE, HandleView<NormalHandle>> {//单例模式方便后期调用 singleton mode is convenient for later call
         std::deque<FreeBlock> m_freeBlocks;
         std::mutex m_mutex;
         using iterator = decltype(m_freeBlocks)::iterator;
         std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
         FreeBlock* m_head;
-        
     public:
         FreeBlockList(HANDLE hprocess = GetCurrentProcess()) : m_head(nullptr) {
             m_handle = hprocess;
-            
+
         }
         ~FreeBlockList() {//当析构时释放所有空闲块 free all free block when destruct
             for (auto& item : m_freeBlocks) {
@@ -1441,7 +1460,7 @@ namespace stc {
         INLINE LPVOID raw() const NOEXCEPT { return BaseAddress; }//不增加引用计数的获取raw指针 get raw pointer 
         INLINE ~Shared_Ptr() NOEXCEPT { Release(); }
         INLINE void Release() NOEXCEPT {//release and refCount-- 引用计数减一
-            refCount--;
+            if(refCount>0)refCount--;
             if (BaseAddress && refCount <= 0) {
                 _FreeMemApi(BaseAddress);//释放内存 free memory 只是归还空间到空闲块链表 return space to free block list
                 BaseAddress = nullptr;
@@ -1660,12 +1679,9 @@ return ret;
         INLINE HANDLE GetHandle() NOEXCEPT { return m_handle; }//获取线程句柄  get thread handle
         INLINE operator bool() { return IsRunning(); }
         INLINE bool IsRunning() NOEXCEPT {
-            //获取线程退出代码  get thread exit code
-            if (m_bAttached) {
-                DWORD dwExitCode = 0;
-                if (CallBacks::OnCallBack(CallBacks::pGetExitCodeThread, m_handle, &dwExitCode)) {
-                    if (dwExitCode == STILL_ACTIVE)return true;
-                }
+            DWORD dwExitCode = 0;
+            if (CallBacks::OnCallBack(CallBacks::pGetExitCodeThread, m_handle, &dwExitCode)) {
+                if (dwExitCode == STILL_ACTIVE)return true;
             }
             return false;
         }
@@ -2010,7 +2026,7 @@ return ret;
                         if (!thread.IsRunning()) continue;
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
-                        if (status == EnumStatus::Continue) continue;
+                        else if (status == EnumStatus::Continue) continue;
                     }
                 }
                 auto nextOffset = current->NextEntryOffset;
@@ -2053,15 +2069,15 @@ return ret;
             threadData.pFunc[1] = (LPVOID)GetProcAddress;
             EnumThread([&](Thread& thread)->EnumStatus {
                 thread.Suspend();//suspend thread   暂停线程
-                CONTEXT ctx{};
+                auto ctx = thread.GetContext();//获取上下文
                 if (ctx.XIP) {
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess);
-                    GenericHandle<HANDLE, NormalHandle> hEvent = CreateEventA(NULL, FALSE, FALSE, threadData.eventname);
-                    if (lpShell&& hEvent) {
+                    Event myevent(threadData.eventname, false);
+                    if (lpShell&& myevent) {
                         m_vecAllocMem.emplace_back(lpShell);//
                         DATA_CONTEXT dataContext{};
                         memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
-                        if constexpr (sizeof...(Arg) > 0) preprocess(std::forward<Arg&>(args)...);//process parameter  处理参数
+                        preprocess(std::forward<Arg&>(args)...);//process parameter  处理参数
                         threadData.fn = _Fx;
                         if constexpr (sizeof...(Arg) > 0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
                         auto pFunction = &internals::ThreadFunction<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>;
@@ -2089,8 +2105,8 @@ return ret;
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();
                         if constexpr (!std::is_same_v<RetType, void>) {
-                            hEvent.Wait(INFINITE);//wait event  等待事件
-                            _ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
+                            myevent.Wait(INFINITE);
+                            if constexpr(sizeof...(Arg)>0)_ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
                         } 
                         return EnumStatus::Break;
                     }
