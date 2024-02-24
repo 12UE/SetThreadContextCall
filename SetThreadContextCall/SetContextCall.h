@@ -1224,7 +1224,7 @@ namespace stc {
             if (ret > 0) {
                 uintptr_t start = (uintptr_t)lpMbi->AllocationBase;
                 uintptr_t end = start + lpMbi->RegionSize, Ratio = 1;
-                if (CheckMask(lpMbi->Type, MEM_IMAGE | MEM_MAPPED)) Ratio = 999;
+                if (CheckMask(lpMbi->Type, MEM_IMAGE | MEM_MAPPED)) Ratio = 999;//设置较长的比例缓存项不容易被清除 set a longer ratio cache item not easy to be cleared
                 cache.AsyncAddCache(std::make_pair(start, end), *lpMbi, CacheNormalTTL * Ratio);
             }
             return ret;
