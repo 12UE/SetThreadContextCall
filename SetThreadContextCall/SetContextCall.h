@@ -2100,13 +2100,12 @@ namespace stc {
                         WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
                         dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address  设置函数地址
                         dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
-                        using parametertype = decltype(threadData);
                         LPVOID parameter = 0;
                         if constexpr (sizeof...(Arg) > 0) {
-                            auto lpParameter = make_Shared<parametertype>(m_hProcess);//allocate memory for parameter    分配内存
+                            auto lpParameter = make_Shared<decltype(threadData)>(m_hProcess);//allocate memory for parameter    分配内存
                             if (lpParameter) {
                                 m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
-                                WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(parametertype));//write parameter  写参数
+                                WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(decltype(threadData)));//write parameter  写参数
                                 dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
                                 parameter = lpParameter.raw();
                             }
