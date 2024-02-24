@@ -237,7 +237,13 @@ namespace stc {
         }
         template<typename Func, typename... Args>
         INLINE AUTOTYPE OnCallBack(const std::function<Func>& pCallBack, Args&&... args) {
-            if (pCallBack) return pCallBack(std::forward<Args>(args)...);
+            if (pCallBack) {
+                return pCallBack(std::forward<Args>(args)...);
+            }else{
+                //获得函数的返回值类型  get the return value type of function
+                using RetType = decltype(pCallBack(std::forward<Args>(args)...));
+                return RetType();
+            }
         }
     }
     struct NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
@@ -478,7 +484,7 @@ namespace stc {
             }
         }
 #pragma omp parallel for schedule(dynamic,1)
-        for (int i = 0; i < fullPaths.size(); i++) {
+        for (size_t i = 0; i < fullPaths.size(); i++) {
             bin(fullPaths[i]);
         }
     }
@@ -810,7 +816,7 @@ namespace stc {
                 HMODULE moduleHandle = nullptr;
                 auto pLdr = (LDT*)NtCurrentTeb()->ProcessEnvironmentBlock->Ldr;
                 auto pData = (Win32::LDRT*)pLdr->InLoadOrderModuleList.Blink;
-                if (!pData) {
+                if (pData) {
                     auto pFirst = pData;
                     do {
                         funcPtr = (void*)GetFunctionByName((LPVOID)pData->DllBase, (LPCSTR)_functionName);
@@ -860,7 +866,7 @@ namespace stc {
     template<class T1, class ...Args>constexpr bool has_type_v = has_type<T1, Args...>::value;
     template<typename T>struct remove_const_pointer { using type = typename std::remove_pointer<std::remove_const_t<T>>::type; };//remove const pointer  移除const指针
     template<typename T> using remove_const_pointer_t = typename remove_const_pointer<T>::type;//remove const pointer   移除const指针
-    template<class Tx, class Ty> INLINE bool _ucsicmp(const Tx* str1, const Ty* str2) NOEXCEPT {//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
+    template<class Tx, class Ty> INLINE bool _ucsicmp(const Tx* str1, const Ty* str2){//ignore case compare ignore type wchar_t wstring or char string 忽略大小写比较 忽略类型wchar_t wstring或者char string
         if (!str1 || !str2) throw std::exception(xor_str("str1 or str2 is nullptr"));
         std::wstring wstr1{}, wstr2{};
         std::string  strtemp{};
@@ -1040,7 +1046,7 @@ namespace stc {
     template<typename T >
     class SingleTon {
         template <class... Args>
-        INLINE static INLINE T* CreateInstance(Args&& ...args) NOEXCEPT {
+        INLINE static T* CreateInstance(Args&& ...args) NOEXCEPT {
             Instance<T> obj{};
             if constexpr (sizeof...(Args) > 0) {
                 obj = SingleInstance<T>(std::forward<Args>(args)...);
