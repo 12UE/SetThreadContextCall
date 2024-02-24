@@ -26,7 +26,6 @@
 #define NOEXCEPT noexcept   //²»Å×³öÒì³£ no throw exception
 #define MAXKEYSIZE 0x10000
 namespace stc {
-    //#define DRIVER_MODE
 #define XORSTR_INLINE	__forceinline
 #define XORSTR_NOINLINE __declspec( noinline )
 #define XORSTR_CONST	constexpr
