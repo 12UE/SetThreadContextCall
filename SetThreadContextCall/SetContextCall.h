@@ -484,7 +484,7 @@ namespace stc {
             }
         }
 #pragma omp parallel for schedule(dynamic,1)
-        for (size_t i = 0; i < fullPaths.size(); i++) {
+        for (int i = 0; i < (int)fullPaths.size(); i++) {
             bin(fullPaths[i]);
         }
     }
