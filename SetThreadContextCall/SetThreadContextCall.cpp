@@ -2,16 +2,6 @@
 using namespace stc;
 //定义一个void类型的函数指针
 typedef void(*pFunc)();
-class Test {
-public:
-    ~Test() {
-        std::cout << "~test()";
-    }
-    Test(){
-        std::cout << "test()";
-    }
-};
-
 int main() {
     auto& Process = Process::GetInstance();//get instance   ťńČĄĘľŔý
     Process.Attach("notepad.exe");//attach process  ¸˝źÓ˝řłĚ

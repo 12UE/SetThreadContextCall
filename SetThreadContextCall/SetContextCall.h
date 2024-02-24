@@ -1410,7 +1410,7 @@ namespace stc {
     class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
         HANDLE m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a HandleView,not responsible for closing process handle
         LPVOID BaseAddress = nullptr;
-        int refCount = 0;
+        std::atomic_int refCount = 0;
         int SpaceSize = 0;
         void AddRef() NOEXCEPT {
             refCount++;
@@ -1439,7 +1439,8 @@ namespace stc {
             AddRef();//引用计数加一说明有一个新的指针指向了这块内存 reference count plus one means a new pointer points to this memory
             BaseAddress = (LPVOID)_AllocMemApi(nsize);
         }
-        INLINE Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress), refCount(other.refCount) {
+        INLINE Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress) {
+            refCount.store(other.refCount.load(std::memory_order_relaxed), std::memory_order_relaxed);
             AddRef();//引用计数加一说明有一个新的指针指向了这块内存 reference count plus one means a new pointer points to this memory
             SpaceSize = other.SpaceSize;
         }
@@ -1447,7 +1448,7 @@ namespace stc {
             if (this != &other) {
                 Release();
                 BaseAddress = other.BaseAddress;
-                refCount = other.refCount;
+                refCount.store(other.refCount.load(std::memory_order_relaxed), std::memory_order_relaxed);
                 SpaceSize = other.SpaceSize;
                 AddRef();//引用计数加一说明有一个新的指针指向了这块内存 reference count plus one means a new pointer points to this memory
             }
@@ -1455,7 +1456,7 @@ namespace stc {
         }
         INLINE Shared_Ptr(Shared_Ptr&& other) NOEXCEPT {//move construct  移动构造
             BaseAddress = other.BaseAddress;
-            refCount = other.refCount;
+            refCount.store(other.refCount.load(std::memory_order_relaxed), std::memory_order_relaxed);
             SpaceSize = other.SpaceSize;
             other.BaseAddress = nullptr;//这样原来的指针就不会释放内存了 so the original pointer will not release memory
             other.refCount = 0;
@@ -1655,6 +1656,8 @@ namespace stc {
             m_handle = std::move(other.m_handle);
             m_dwThreadId = other.m_dwThreadId;
             m_bAttached = other.m_bAttached;
+            m_nSuspendCount.store(other.m_nSuspendCount.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            other.m_nSuspendCount = 0;
             other.m_dwThreadId = 0;
             other.m_bAttached = false;
         }
@@ -1663,12 +1666,18 @@ namespace stc {
                 m_handle = std::move(other.m_handle);
                 m_dwThreadId = other.m_dwThreadId;
                 m_bAttached = other.m_bAttached;
+                m_nSuspendCount.store(other.m_nSuspendCount.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                other.m_nSuspendCount = 0;
                 other.m_dwThreadId = 0;
                 other.m_bAttached = false;
             }
             return *this;
         }
         ~Thread() NOEXCEPT {
+            int suspendcount = m_nSuspendCount;
+            for (auto i = 0; i < suspendcount; i++) {
+                Resume();//这里会修改m_nSuspendCount
+            }
         }
         INLINE HANDLE GetHandle() NOEXCEPT { return m_handle; }//获取线程句柄  get thread handle
         INLINE operator bool() { return IsRunning(); }
@@ -1679,33 +1688,25 @@ namespace stc {
             }
             return false;
         }
-        INLINE bool IsWait() {
-            if (!m_bAttached) return false;
-            if (!SuspendCount())Suspend();
-            auto ctx = GetContext();
-            if (SuspendCount() > 1)Resume();
-            auto xip = (uintptr_t)ctx.XIP;
-            if (xip == (uintptr_t)WaitForSingleObject || xip == (uintptr_t)WaitForMultipleObjects) {
-                if (SuspendCount() == 1)Resume();
-                return true;
-            }
-            return false;
-        }
         //获取线程上下文  get thread context
-        INLINE CONTEXT GetContext() {
+        INLINE CONTEXT GetContext(bool bSuspend=true) {
             CONTEXT context = {};
             if (m_bAttached) {
                 context.ContextFlags = CONTEXT_FULL;
                 CallBacks::OnCallBack(CallBacks::pGetThreadContext, m_handle, &context);
-                Suspend();
+                if (bSuspend) {
+                    Suspend();
+                }
             }
             return context;
         }
         //设置线程的上下文  set thread context
-        INLINE void SetContext(const CONTEXT& context) NOEXCEPT {
+        INLINE void SetContext(const CONTEXT& context,bool bResume=true) NOEXCEPT {
             if (m_bAttached) {
                 CallBacks::OnCallBack(CallBacks::pSetThreadContext, m_handle, (PCONTEXT)&context);
-                Resume();
+                if (bResume) {
+                    Resume();
+                }
             }
         }
         //暂停线程执行  suspend thread execution
@@ -1725,7 +1726,7 @@ namespace stc {
         INLINE int SuspendCount() { return m_nSuspendCount; }
     };
     template <typename T>
-    class ThreadSafeVector {//线程安全的vector thread safe vector
+    class ThreadSafeVector {//线程安全的vector有锁 thread safe vector has lock
         std::mutex m_mutex; //lock for vector
         std::vector<T> m_vector;
     public:
