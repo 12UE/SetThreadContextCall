@@ -2105,7 +2105,7 @@ namespace stc {
                             auto lpParameter = make_Shared<decltype(threadData)>(m_hProcess);//allocate memory for parameter    分配内存
                             if (lpParameter) {
                                 m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
-                                WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(decltype(threadData)));//write parameter  写参数
+                                WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(threadData));//write parameter  写参数
                                 dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
                                 parameter = lpParameter.raw();
                             }
@@ -2129,6 +2129,3 @@ namespace stc {
         }
     };
 }
-
-
-
