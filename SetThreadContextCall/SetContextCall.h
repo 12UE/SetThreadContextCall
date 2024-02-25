@@ -2009,7 +2009,7 @@ namespace stc {
             static constexpr bool value = decltype(test<T>(nullptr))::value;//is callable
         };
         INLINE NTSTATUS ZwQuerySystemInformationEx(SYSTEM_INFORMATION_CLASS SystemClass, std::unique_ptr<CHAR[]>& SystemInfo, PULONG nSize = NULL, ULONG buffer_size = PAGESIZE) {
-            auto buffer = std::make_unique<CHAR[]>(0x1000);
+            auto buffer = std::make_unique<CHAR[]>(sizeof(SYSTEM_INFORMATION_CLASS));
             if (!buffer) return STATUS_INVALID_PARAMETER;
             ULONG return_length = 0;
             for (auto status = STATUS_INFO_LENGTH_MISMATCH; status == STATUS_INFO_LENGTH_MISMATCH; status = CallBacks::OnCallBack(CallBacks::pZwQuerySystemInformation, SystemClass, buffer.get(), buffer_size, &return_length)) {
