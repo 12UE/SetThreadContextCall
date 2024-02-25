@@ -514,10 +514,12 @@ namespace stc {
 #else
         if (Machine != IMAGE_FILE_MACHINE_I386)return result;
 #endif // _WIN64
+        //获取当前模块的导出表 get current module's export table
         auto pExportDir = (PIMAGE_DATA_DIRECTORY)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
         if (!pExportDir)return result;
         auto pExport = (PIMAGE_EXPORT_DIRECTORY)(buffer + RVA2Offset(pExportDir->VirtualAddress, pNtHeader, buffer));
         if (!pExport) return result;
+        //遍历导出表的函数名字列表 traverse export table's function name list
         if (pExport->AddressOfFunctions && pExport->AddressOfNames) {
             for (DWORD i = 0; i < pExport->NumberOfNames; i++) {
                 DWORD dwRVA = *(DWORD*)(RVA2Offset(pExport->AddressOfNames, pNtHeader, buffer) + buffer + i * sizeof(std::uint32_t));
@@ -528,19 +530,19 @@ namespace stc {
         return result;
     }
     static INLINE std::vector<std::string> GetImportDirectory() {
-        std::vector<std::string> PathList;//程序默认搜索目录
-        PathList.reserve(MAX_PATH*100);
+        std::vector<std::string> PathList;//程序默认搜索目录    program default search directory
+        PathList.reserve(MAX_PATH*100);//预先分配100个目录大小的空间 pre-allocate 100 directory size space
         char szPath[MAX_PATH]{};
-        std::ignore = GetCurrentDirectoryA(MAX_PATH, szPath);
+        std::ignore = GetCurrentDirectoryA(MAX_PATH, szPath);//获取当前目录 get current directory
         PathList.push_back(szPath);
-        std::ignore = GetSystemDirectoryA(szPath, MAX_PATH);
+        std::ignore = GetSystemDirectoryA(szPath, MAX_PATH);//获取系统目录 get system directory
         PathList.push_back(szPath);
-        std::ignore = GetWindowsDirectoryA(szPath, MAX_PATH);
+        std::ignore = GetWindowsDirectoryA(szPath, MAX_PATH);//获取windows目录 get windows directory
         PathList.push_back(szPath);
         char* szEnvPath = nullptr;
-        _dupenv_s(&szEnvPath, nullptr, xor_str("PATH"));
+        _dupenv_s(&szEnvPath, nullptr, xor_str("PATH"));//获取环境变量的路径 get environment variable's path
         char* szEnvPathTemp = szEnvPath;
-        while (szEnvPathTemp) {
+        while (szEnvPathTemp) {//遍历环境变量的路径 traverse environment variable's path
             char* szEnvPathTemp2 = strchr(szEnvPathTemp, ';');
             if (szEnvPathTemp2) {
                 *szEnvPathTemp2 = '\0';
@@ -553,21 +555,21 @@ namespace stc {
             }
         }
         for (auto& path : PathList) { std::transform(path.begin(), path.end(), path.begin(), ::tolower); }
-        PathList.erase(std::remove_if(PathList.begin(), PathList.end(), [](std::string& path) {return path.length() == 0; }), PathList.end());
-        std::sort(PathList.begin(), PathList.end());
-        PathList.erase(std::unique(PathList.begin(), PathList.end()), PathList.end());
+        PathList.erase(std::remove_if(PathList.begin(), PathList.end(), [](std::string& path) {return path.length() == 0; }), PathList.end());//去除空路径 remove empty path
+        std::sort(PathList.begin(), PathList.end());//排序 sort
+        PathList.erase(std::unique(PathList.begin(), PathList.end()), PathList.end());//去重 remove duplicate
         return PathList;
     }
     class SpinLock {
         CRITICAL_SECTION g_cs;
     public:
         SpinLock() {
-            InitializeCriticalSection(&g_cs);
+            InitializeCriticalSection(&g_cs);//初始化临界区 initialize critical section
         }
-        INLINE CRITICAL_SECTION& Get()NOEXCEPT {
+        INLINE CRITICAL_SECTION& Get()NOEXCEPT {//获取临界区 get critical section
             return g_cs;
         }
-        ~SpinLock() {
+        ~SpinLock() {//析构函数 destructor
             DeleteCriticalSection(&g_cs);
         }
     };
@@ -636,16 +638,16 @@ namespace stc {
         void* mapview = nullptr;
         DWORD m_FileSize = 0;
     public:
-        FileMapView(HANDLE hFile, DWORD PROTECT) {
+        FileMapView(HANDLE hFile, DWORD PROTECT) {//创建文件映射 create file mapping
             m_handle = hFile;
             m_handle = CreateFileMappingA(hFile, NULL, PROTECT, 0, 0, NULL);
             OpenView();
         }
-        FileMapView(DWORD Access,const char* MapName) {
+        FileMapView(DWORD Access,const char* MapName) {//打开文件映射 open file mapping
             m_handle=OpenFileMappingA(Access, FALSE, MapName);
             OpenView();
         }
-        ~FileMapView() {
+        ~FileMapView() {//析构函数 destructor
             if (mapview)UnmapViewOfFile(mapview);
         }
         INLINE void* GetBase() {
@@ -661,6 +663,8 @@ namespace stc {
         std::unordered_map<std::string, HMODULE> modules;
         SpinLock lock;
     public:
+        //一种持久化,读取文件内的函数名,并且缓存到内存中,如果文件不存在,则扫描当前目录下的dll文件,并且缓存到内存中
+        //a kind of persistence, read the function name in the file and cache it in memory, if the file does not exist, scan the dll file in the current directory and cache it in memory
         SystemRoutine() {
             EnsureDirectoryExists(xor_str("Cache"));
             //如果当前是64位就读取Cache//Functioncache64.bin 否则读取Cache//Functioncache32.bin
@@ -672,7 +676,7 @@ namespace stc {
             if (IsFileExistA(path.c_str())) data = readFromFile<std::string, std::string>(path);
             if (data.empty()) ScanFile();
         }
-        ~SystemRoutine() {
+        ~SystemRoutine() {//仅是析构时写入文件,不是每次写入文件 only write to file when destruct, not every time write to file
             std::string path;
             BOOL isWow64 = FALSE; // 定义一个 BOOL 类型的变量来接收返回值
             if (IsWow64Process(GetCurrentProcess(), &isWow64)) {
@@ -692,11 +696,11 @@ namespace stc {
             if (ftyp & FILE_ATTRIBUTE_DIRECTORY)return true;
             return false;
         }
-        INLINE bool FileExists(const std::string& name) {
+        INLINE bool FileExists(const std::string& name) {//判断文件是否存在 judge whether file exists
             std::ifstream f(name.c_str());
             return f.good();
         }
-        INLINE void EnsureDirectoryExists(const std::string& dir) {
+        INLINE void EnsureDirectoryExists(const std::string& dir) {//确保目录存在 ensure directory exists
             if (!DirectoryExists(dir))CreateDirectoryA(dir.c_str(), NULL);
         }
         INLINE HMODULE LoadApi(LPCSTR lpLibFileName) {
@@ -756,12 +760,7 @@ namespace stc {
         }
         INLINE  std::string GetExportDllName(const std::string& ExportFunctionName) {
             auto iter = data.find(ExportFunctionName);
-            if (iter != data.end()) {
-                return iter->second;
-            }
-            else {
-                return "";
-            }
+            return (iter != data.end()) ? iter->second : "";
         }
         typedef VOID(NTAPI* PPS_POST_PROCESS_INIT_ROUTINE) (VOID);
         typedef struct _PEB_LDR_DATA {
@@ -860,7 +859,7 @@ namespace stc {
             }
         }
     };
-    static SystemRoutine init;
+    static SystemRoutine init;//生命周期为整个程序 lifetime is whole program
     INLINE void* GetRoutine(const char* _functionName, const char* _moduleName = "") {
         return init.GetRoutine(_functionName, _moduleName);
     }
