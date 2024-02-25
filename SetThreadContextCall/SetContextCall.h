@@ -2108,7 +2108,7 @@ namespace stc {
                         memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
                         if constexpr(sizeof...(Arg)>0)preprocess(std::forward<Arg&>(args)...);//process parameter  处理参数
                         threadData.fn = _Fx;
-                        if constexpr (sizeof...(Arg) > 0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
+                        if constexpr(sizeof...(Arg)>0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
                         auto pFunction = CreateFunc<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
                         //get function address  获取函数地址
                         auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
@@ -2119,7 +2119,7 @@ namespace stc {
                         dataContext.pFunction = lpFunction.raw<LPVOID>();//set function address  设置函数地址
                         dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
                         LPVOID parameter = 0;
-                        if constexpr (sizeof...(Arg) > 0) {
+                        if constexpr(sizeof...(Arg)>0) {
                             auto lpParameter = make_Shared<decltype(threadData)>(m_hProcess);//allocate memory for parameter    分配内存
                             if (lpParameter) {
                                 m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
@@ -2141,7 +2141,7 @@ namespace stc {
                 }
                 return EnumStatus::Continue;
             });
-            if (maptoorigin.size() > 0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
+            if (maptoorigin.size() > 0) if constexpr(sizeof...(Arg)>0)postprocess(args...);//post process parameter   后处理参数
             ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
             maptoorigin.clear();//clear map  清除map
             if constexpr (!std::is_same_v<RetType, void>)return threadData.retdata;//return value    返回值
