@@ -1576,7 +1576,6 @@ namespace stc {
             [threadData](auto index) {
                 if constexpr (!std::is_same_v<T, void>) {
                     threadData->retdata = std::apply(threadData->fn, threadData->params);
-                    return threadData->retdata;
                 }else {
                     std::apply(threadData->fn, threadData->params);
                 }
@@ -2075,7 +2074,7 @@ namespace stc {
             }
         }
         template<class _Fn, class ...Arg>
-        AUTOTYPE SetContextCallImpl(__in _Fn&& _Fx, __in Arg ...args) NOEXCEPT {
+        AUTOTYPE SetContextCallImpl(_Fn&& _Fx,Arg ...args) NOEXCEPT {
             using RetType = decltype(_Fx(args...));//return type is common type or not
             if (!m_bAttached) return RetType();
             auto threadData = Create<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
@@ -2124,7 +2123,7 @@ namespace stc {
                         thread.Resume();//resume thread   恢复线程
                         if constexpr (!std::is_same_v<RetType, void>) {
                             myevent.Wait(INFINITE);//等待事件被触发
-                            ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
+                            if(parameter)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
                         } 
                         return EnumStatus::Break;
                     }
