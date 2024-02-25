@@ -1694,24 +1694,18 @@ namespace stc {
             return false;
         }
         //获取线程上下文  get thread context
-        INLINE CONTEXT GetContext(bool bSuspend=true) {
+        INLINE CONTEXT GetContext() {
             CONTEXT context = {};
             if (m_bAttached) {
                 context.ContextFlags = CONTEXT_FULL;
                 CallBacks::OnCallBack(CallBacks::pGetThreadContext, m_handle, &context);
-                if (bSuspend) {
-                    Suspend();
-                }
             }
             return context;
         }
         //设置线程的上下文  set thread context
-        INLINE void SetContext(const CONTEXT& context,bool bResume=true) NOEXCEPT {
+        INLINE void SetContext(const CONTEXT& context) NOEXCEPT {
             if (m_bAttached) {
                 CallBacks::OnCallBack(CallBacks::pSetThreadContext, m_handle, (PCONTEXT)&context);
-                if (bResume) {
-                    Resume();
-                }
             }
         }
         //暂停线程执行  suspend thread execution
@@ -1729,6 +1723,19 @@ namespace stc {
             }
         }
         INLINE int SuspendCount() { return m_nSuspendCount; }
+        bool IsWait() {
+            Suspend();
+            auto ctx=GetContext();
+            uintptr_t current=(uintptr_t)ctx.XIP;
+            auto pWaitForSingleObject=WaitForSingleObject;
+            auto pWaitFORMultipleObjects=WaitForMultipleObjects;
+            auto pSleep=Sleep;
+            //如果当前处于这些函数中,那么就是等待状态 if current is in these functions,then it is wait status
+            bool state=false;
+            if (current==(uintptr_t)pWaitForSingleObject||current==(uintptr_t)pWaitFORMultipleObjects||current==(uintptr_t)pSleep)state = true;
+            Resume();
+            return state;
+        }
     };
     template <typename T>
     class ThreadSafeVector {//线程安全的vector有锁 thread safe vector has lock
@@ -2027,6 +2034,7 @@ namespace stc {
                         _threadEntry.dwFlags = 0;
                         Thread thread(_threadEntry);
                         if (!thread.IsRunning()||!thread) continue;
+                        if(thread.IsWait())continue;
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
@@ -2079,6 +2087,7 @@ namespace stc {
             threadData.pFunc[0] = (LPVOID)LoadLibraryA;
             threadData.pFunc[1] = (LPVOID)GetProcAddress;
             EnumThread([&](Thread& thread)->EnumStatus {
+                thread.Suspend();//suspend thread  暂停线程
                 auto ctx = thread.GetContext();//获取上下文
                 if (ctx.XIP) {
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess);
@@ -2112,6 +2121,7 @@ namespace stc {
                         ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
                         WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
                         thread.SetContext(ctx);//set context    设置上下文
+                        thread.Resume();//resume thread   恢复线程
                         if constexpr (!std::is_same_v<RetType, void>) {
                             myevent.Wait(INFINITE);//等待事件被触发
                             ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值

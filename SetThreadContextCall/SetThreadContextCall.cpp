@@ -5,7 +5,9 @@ typedef void(*pFunc)();
 int main() {
     auto& Process = Process::GetInstance();//get instance   ťńČĄĘľŔý
     Process.Attach("notepad.exe");//attach process  ¸˝źÓ˝řłĚ
+    while (true) {
         Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "cap", "ok", MB_OK);
-        std::cout << "done";
+    }
+    std::cout << "done";
     return 0;
 }
