@@ -738,8 +738,7 @@ namespace stc {
                         if ((dwFileSize / 8 / 1024) > 10) {
                             FileMapView mapview(hFile.get(), PAGE_READONLY);
                             ExportFuncList = ScanExport(((char*)mapview.GetBase()));
-                        }
-                        else {
+                        }else {
                             std::unique_ptr<char[]> buffer(new char[dwFileSize]);
                             DWORD dwRead = 0;
                             std::ignore = ReadFile(hFile, buffer.get(), dwFileSize, &dwRead, NULL);
@@ -2071,8 +2070,7 @@ namespace stc {
         INLINE AUTOTYPE Create() {
             if constexpr (sizeof...(Arg) > 0) {
                 return ThreadData2<Fn, RetType, Arg...>{};
-            }
-            else {
+            }else {
                 return ThreadData<Fn, RetType>{};
             }
         }
