@@ -1870,7 +1870,7 @@ namespace stc {
         INLINE void PostprocessPtr(T& ptr) NOEXCEPT {
             auto iter = maptoorigin.find((LPVOID)ptr);//find original address   查找原始地址
             if (iter != maptoorigin.end()) {
-                LPVOID OriginAddr = iter->second;//original address   原始地址
+                auto OriginAddr = iter->second;//original address   原始地址
                 if (m_RunningMode == EnumRunningMode::POINTER_READ) {
                     ReadApi((LPVOID)ptr, OriginAddr, sizeof(T));//read value from allocated address to original address    从分配地址读取值到原始地址
                 }
