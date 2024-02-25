@@ -349,6 +349,7 @@ namespace stc {
         }
     };
     using THANDLE = GenericHandle<HANDLE, NormalHandle>;
+    using _THANDLE = GenericHandle<HANDLE, HandleView<NormalHandle>>;
     class Event:public THANDLE {
     public:
         Event() = default;//默认构造
@@ -982,7 +983,7 @@ namespace stc {
         template<class... Args>
         INLINE static Instance<T> CreateInstance(InstanceManger* thisinstance, Args&&... args) {
             std::atomic_bool Owend = false;
-            GenericHandle<HANDLE, HandleView<NormalHandle>> hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
+            _THANDLE hFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, GetMapName<T>().c_str());
             if (!hFile) {
                 // 创建文件映射 Create file mapping
                 hFile = CreateFileMappingA(
@@ -1270,7 +1271,7 @@ namespace stc {
         | PAGE_EXECUTE_READWRITE
         | PAGE_EXECUTE_WRITECOPY;
     //空闲块链表 free block list
-    class FreeBlockList :public SingleTon<FreeBlockList>, GenericHandle<HANDLE, HandleView<NormalHandle>> {//单例模式方便后期调用 singleton mode is convenient for later call
+    class FreeBlockList :public SingleTon<FreeBlockList>, _THANDLE {//单例模式方便后期调用 singleton mode is convenient for later call
         std::deque<FreeBlock> m_freeBlocks;
         std::mutex m_mutex;
         using iterator = decltype(m_freeBlocks)::iterator;
