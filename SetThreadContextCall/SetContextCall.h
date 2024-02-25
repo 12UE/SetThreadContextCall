@@ -22,6 +22,9 @@
 #include <unordered_set>
 #include <winnt.h>
 #include <any>
+#ifdef _DEBUG
+#error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
+#endif
 #define INLINE inline
 #define NOEXCEPT noexcept   //不抛出异常 no throw exception
 #define MAXKEYSIZE 0x10000
@@ -1873,14 +1876,16 @@ namespace stc {
         template<typename T>
         INLINE void preprocessparameter(T& arg) NOEXCEPT {}
         INLINE void preprocessparameter(const char*& arg) NOEXCEPT {
-            auto nlen = (int)strlen(arg) + 1;
+            auto nlen = 0;
+            if(arg) nlen = (int)strlen(arg) + 1;
             auto p = make_Shared<char>(m_hProcess, nlen * sizeof(char));
             m_vecAllocMem.push_back(p);
             WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(char));
             arg = p.raw<const char*>();
         }//process const char* parameter    处理const char*参数
         INLINE void preprocessparameter(const wchar_t*& arg) {
-            auto nlen = (int)wcslen(arg) + 1;
+            auto nlen=0;
+            if(arg) nlen= (int)wcslen(arg) + 1;
             auto p = make_Shared<wchar_t>(m_hProcess, nlen * sizeof(wchar_t));
             m_vecAllocMem.push_back(p);
             WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(wchar_t));
