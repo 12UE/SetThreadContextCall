@@ -26,7 +26,7 @@
 #error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
 #endif
 #ifndef _OPENMP
-#error "项目没有openmp环境 project does not have openmp environment"
+#error "项目没有openmp环境 属性->C/C++->语言->OpenMP 支持  project does not have openmp environment property->C/C++->language->OpenMP support"
 #endif
 #define INLINE inline
 #define NOEXCEPT noexcept   //不抛出异常 no throw exception

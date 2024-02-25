@@ -48,9 +48,7 @@ int main() {
     startProcessIfNotFound(L"notepad.exe");
 
     Process.Attach("notepad.exe");//attach process  ¸˝źÓ˝řłĚ
-    while (true) {
-        Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "cap", "ok", MB_OK);
-    }
+    Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "cap", "ok", MB_OK);
     std::cout << "done";
     return 0;
 }
