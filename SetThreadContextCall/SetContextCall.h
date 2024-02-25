@@ -2082,7 +2082,7 @@ namespace stc {
             }
         }
         template<class _Fn, class ...Arg>
-        AUTOTYPE SetContextCallImpl(_Fn&& _Fx,Arg ...args) NOEXCEPT {
+        INLINE AUTOTYPE SetContextCallImpl(_Fn&& _Fx,Arg ...args) NOEXCEPT {
             using RetType = decltype(_Fx(args...));//return type is common type or not
             if (!m_bAttached) return RetType();
             auto threadData = Create<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
