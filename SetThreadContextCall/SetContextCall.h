@@ -529,7 +529,7 @@ namespace stc {
     }
     static INLINE std::vector<std::string> GetImportDirectory() {
         std::vector<std::string> PathList;//³ÌÐòÄ¬ÈÏËÑË÷Ä¿Â¼
-        PathList.reserve(0x1000);
+        PathList.reserve(MAX_PATH*100);
         char szPath[MAX_PATH]{};
         std::ignore = GetCurrentDirectoryA(MAX_PATH, szPath);
         PathList.push_back(szPath);
