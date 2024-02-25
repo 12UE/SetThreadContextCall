@@ -348,7 +348,8 @@ namespace stc {
             m_bOwner = false;
         }
     };
-    class Event:public GenericHandle<HANDLE, NormalHandle> {
+    using THANDLE = GenericHandle<HANDLE, NormalHandle>;
+    class Event:public THANDLE {
     public:
         Event() = default;//默认构造
         Event(const char* EventName,bool bManualReset=false) {
@@ -622,7 +623,7 @@ namespace stc {
     INLINE  bool IsFileExistA(const char* filename) {
         return GetFileAttributesA(filename) != INVALID_FILE_ATTRIBUTES;
     }
-    class FileMapView:public GenericHandle<HANDLE, NormalHandle> {
+    class FileMapView:public THANDLE {
         DWORD GetSize() {
             return ::GetFileSize(m_handle, NULL);
         }
@@ -730,7 +731,7 @@ namespace stc {
 #pragma omp parallel for schedule(dynamic,1)
             for (int i = 0; i < (int)libPath.size(); i++) {
                 if (IsFileExistA(libPath[i].c_str())) {
-                    GenericHandle<HANDLE, NormalHandle> hFile = CreateFileA(libPath[i].c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                    THANDLE hFile = CreateFileA(libPath[i].c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
                     if (hFile) {
                         auto	dwFileSize = GetFileSize(hFile, 0);
                         std::vector<std::string> ExportFuncList{};
@@ -1648,7 +1649,7 @@ namespace stc {
         0xc3								//retn
     };
 #endif
-    class Thread:public GenericHandle<HANDLE, NormalHandle> {//把线程当做对象来处理  process thread as object
+    class Thread:public THANDLE {//把线程当做对象来处理  process thread as object
         DWORD m_dwThreadId = 0;//这个类继承了智能句柄类,所以不需要手动关闭句柄  this class inherit from smart handle class,so no need to close handle manually
         bool m_bAttached = false;
         std::atomic_int m_nSuspendCount = 0;
