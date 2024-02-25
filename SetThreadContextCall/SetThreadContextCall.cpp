@@ -43,11 +43,11 @@ void startProcessIfNotFound(const wchar_t* exeName) {
     }
 }
 int main() {
-    auto& Process = Process::GetInstance();//get instance   ťńČĄĘľŔý
+    auto& Process = Process::GetInstance();//get instance
     //判断当前有没有运行记事本
     startProcessIfNotFound(L"notepad.exe");
 
-    Process.Attach("notepad.exe");//attach process  ¸˝źÓ˝řłĚ
+    Process.Attach("notepad.exe");//attach process
     Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "cap", "ok", MB_OK);
     std::cout << "done";
     return 0;
