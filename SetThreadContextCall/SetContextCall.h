@@ -1467,11 +1467,13 @@ namespace stc {
             other.refCount = 0;
             other.SpaceSize = 0;
         }
-        INLINE LPVOID get() NOEXCEPT {//获得指针但是增加引用计数 get pointer but increase reference count
+        template<class T>
+        INLINE T get() NOEXCEPT {//获得指针但是增加引用计数 get pointer but increase reference count
             AddRef();
-            return BaseAddress;
+            return (T)BaseAddress;
         }
-        INLINE LPVOID raw() const NOEXCEPT { return BaseAddress; }//不增加引用计数的获取raw指针 get raw pointer 
+        template<class T>
+        INLINE T raw() const NOEXCEPT { return (T)BaseAddress; }//不增加引用计数的获取raw指针 get raw pointer 
         INLINE ~Shared_Ptr() NOEXCEPT { Release(); }
         INLINE void Release() NOEXCEPT {//release and refCount-- 引用计数减一
             if(refCount>0)refCount--;
@@ -1874,15 +1876,15 @@ namespace stc {
             auto nlen = (int)strlen(arg) + 1;
             auto p = make_Shared<char>(m_hProcess, nlen * sizeof(char));
             m_vecAllocMem.push_back(p);
-            WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(char));
-            arg = (const char*)p.raw();
+            WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(char));
+            arg = p.raw<const char*>();
         }//process const char* parameter    处理const char*参数
         INLINE void preprocessparameter(const wchar_t*& arg) {
             auto nlen = (int)wcslen(arg) + 1;
             auto p = make_Shared<wchar_t>(m_hProcess, nlen * sizeof(wchar_t));
             m_vecAllocMem.push_back(p);
-            WriteApi((LPVOID)p.get(), (LPVOID)arg, nlen * sizeof(wchar_t));
-            arg = (const wchar_t*)p.raw();
+            WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(wchar_t));
+            arg = p.raw<const wchar_t*>();
         }//process const wchar_t* parameter   处理const wchar_t*参数
         template<typename T>
         INLINE void ProcessPtr(T& ptr) NOEXCEPT {
@@ -1891,9 +1893,9 @@ namespace stc {
                 auto p = make_Shared<BYTE>(m_hProcess, Size);
                 if (p) {
                     m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory   emplace back到vector中避免内存泄漏可以通过clearmemory清除
-                    WriteApi(p.get(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer   写入值到分配地址，因为参数是指针
-                    if (m_RunningMode == EnumRunningMode::POINTER_READ)maptoorigin.insert(std::make_pair((LPVOID)p.raw(), (LPVOID)ptr));//save original address and allocated address   保存原始地址和分配地址
-                    ptr = (T)p.raw();//set parameter to allocated address   设置参数为分配地址
+                    WriteApi(p.get<LPVOID>(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer   写入值到分配地址，因为参数是指针
+                    if (m_RunningMode == EnumRunningMode::POINTER_READ)maptoorigin.insert(std::make_pair(p.raw<LPVOID>(), (LPVOID)ptr));//save original address and allocated address   保存原始地址和分配地址
+                    ptr = p.raw<T>();//set parameter to allocated address   设置参数为分配地址
                 }
             }
         }
@@ -2104,21 +2106,21 @@ namespace stc {
                         auto lpFunction = make_Shared<BYTE>(m_hProcess, length);//allocate memory for function  分配内存
                         if (!lpFunction)return EnumStatus::Continue;
                         m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
-                        WriteApi((LPVOID)lpFunction.get(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
-                        dataContext.pFunction = (LPVOID)lpFunction.raw();//set function address  设置函数地址
+                        WriteApi(lpFunction.get<LPVOID>(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
+                        dataContext.pFunction = lpFunction.raw<LPVOID>();//set function address  设置函数地址
                         dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
                         LPVOID parameter = 0;
                         if constexpr (sizeof...(Arg) > 0) {
                             auto lpParameter = make_Shared<decltype(threadData)>(m_hProcess);//allocate memory for parameter    分配内存
                             if (lpParameter) {
                                 m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
-                                WriteApi((LPVOID)lpParameter.get(), &threadData, sizeof(threadData));//write parameter  写参数
-                                dataContext.lpParameter = (PBYTE)lpParameter.raw();//set parameter address  设置参数地址
-                                parameter = lpParameter.raw();
+                                WriteApi(lpParameter.get<LPVOID>(), &threadData, sizeof(threadData));//write parameter  写参数
+                                dataContext.lpParameter = lpParameter.raw<PBYTE>();//set parameter address  设置参数地址
+                                parameter = lpParameter.raw<LPVOID>();
                             }
                         }
-                        ctx.XIP = (uintptr_t)lpShell.raw();//set xip   设置xip
-                        WriteApi((LPVOID)lpShell.get(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
+                        ctx.XIP = lpShell.raw<uintptr_t>();//set xip   设置xip
+                        WriteApi(lpShell.get<LPVOID>(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();//resume thread   恢复线程
                         if constexpr (!std::is_same_v<RetType, void>) {
