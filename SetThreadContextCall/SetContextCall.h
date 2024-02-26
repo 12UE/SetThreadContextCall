@@ -2092,6 +2092,7 @@ namespace stc {
             strcpy_s(threadData.funcname[3], xor_str("CloseHandle"));//CloseHandle
             threadData.pFunc[0] = (LPVOID)LoadLibraryA;
             threadData.pFunc[1] = (LPVOID)GetProcAddress;
+            DWORD waitresult = WAIT_TIMEOUT;
             EnumThread([&](Thread& thread)->EnumStatus {
                 thread.Suspend();//suspend thread  暂停线程
                 auto ctx = thread.GetContext();//获取上下文
@@ -2130,6 +2131,7 @@ namespace stc {
                         thread.Resume();//resume thread   恢复线程
                         if constexpr (!std::is_same_v<RetType, void>) {
                             auto WaitResult=myevent.Wait(CacheNormalTTL);//等待事件被触发 等待很短一段时间大概200ms
+                            waitresult = WaitResult;
                             if(parameter&&WaitResult==WAIT_OBJECT_0)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
                         } 
                         return EnumStatus::Break;
@@ -2137,7 +2139,7 @@ namespace stc {
                 }
                 return EnumStatus::Continue;
             });
-            if (maptoorigin.size() > 0) if constexpr(sizeof...(Arg)>0)postprocess(args...);//post process parameter   后处理参数
+            if (maptoorigin.size() > 0&& waitresult == WAIT_OBJECT_0) if constexpr(sizeof...(Arg)>0)postprocess(args...);//post process parameter   后处理参数
             ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
             maptoorigin.clear();//clear map  清除map
             if constexpr (!std::is_same_v<RetType, void>)return threadData.retdata;//return value    返回值
