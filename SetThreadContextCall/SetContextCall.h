@@ -288,35 +288,35 @@ namespace stc {
             return *this;
         }
         //等待句柄 wait handle 单位:毫秒 unit:ms
-        INLINE DWORD Wait(DWORD time=INFINITE)NOEXCEPT {
+        virtual INLINE DWORD Wait(DWORD time=INFINITE)NOEXCEPT {
             return Traits::Wait(m_handle, time);
         }
         //判断和T类型是否相同 judge whether is same type with T
-        INLINE bool operator==(const T& handle)NOEXCEPT {//重载== overload ==
+        virtual INLINE bool operator==(const T& handle)NOEXCEPT {//重载== overload ==
             return m_handle == handle;
         }
         //重载!= overload !=
-        INLINE bool operator!=(const T& handle)NOEXCEPT {//重载!= overload !=
+        virtual INLINE bool operator!=(const T& handle)NOEXCEPT {//重载!= overload !=
             return m_handle != handle;
         }
-        INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
+        virtual INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
             return m_handle;
         }
-        INLINE operator bool() NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
+        virtual INLINE operator bool() NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
             return IsValid();
         }
         //重载取地址 overload get address of handle 
-        INLINE T* operator&()NOEXCEPT {
+        virtual INLINE T* operator&()NOEXCEPT {
             return &m_handle;
         }
-        INLINE Traits* operator->()NOEXCEPT {//允许直接调用句柄的方法 allow to call handle's method directly
+        virtual INLINE Traits* operator->()NOEXCEPT {//允许直接调用句柄的方法 allow to call handle's method directly
             return (Traits*)this;//强制转换为Traits类型 force convert to Traits type
         }
-        INLINE T get()NOEXCEPT {
+        virtual INLINE T get()NOEXCEPT {
             refcount++;//增加引用计数 increase reference count
             return m_handle;
         }
-        INLINE void Release() {
+        virtual INLINE void Release() {
             //仅仅refcount>=0的时候
             if (refcount > 0) refcount--;
             if (refcount == 0) {
@@ -327,15 +327,15 @@ namespace stc {
                 }
             }
         }
-        INLINE void reset()NOEXCEPT {
+        virtual INLINE void reset()NOEXCEPT {
             Release();
             m_handle = Traits::InvalidHandle();
             m_bOwner = false;
         }
-        INLINE void attatch()NOEXCEPT {//获取所有权 get ownership
+        virtual INLINE void attatch()NOEXCEPT {//获取所有权 get ownership
             m_bOwner = true;
         }
-        INLINE void detach()NOEXCEPT {//释放所有权 release ownership
+        virtual INLINE void detach()NOEXCEPT {//释放所有权 release ownership
             m_bOwner = false;
         }
     };
@@ -1683,7 +1683,6 @@ namespace stc {
             }
         }
         INLINE HANDLE GetHandle() NOEXCEPT { return m_handle; }//获取线程句柄  get thread handle
-        INLINE operator bool() { return IsRunning(); }
         INLINE bool IsRunning() NOEXCEPT {
             DWORD dwExitCode = 0;
             if (CallBacks::OnCallBack(CallBacks::pGetExitCodeThread, m_handle, &dwExitCode)) {
@@ -1733,6 +1732,9 @@ namespace stc {
             if (current==(uintptr_t)pWaitForSingleObject||current==(uintptr_t)pWaitFORMultipleObjects||current==(uintptr_t)pSleep)state = true;
             Resume();
             return state;
+        }
+        operator bool()  noexcept override {
+            return IsRunning()&&!IsWait()&&m_handle&&m_handle!=INVALID_HANDLE_VALUE;
         }
     };
     template <typename T>
@@ -2018,7 +2020,7 @@ namespace stc {
         }
         template<class PRE>
         INLINE void EnumThread(const PRE& pre) NOEXCEPT {//enum thread through snapshot    通过快照枚举线程
-            auto buffer = std::make_unique<CHAR[]>(0x1);
+            auto buffer = std::make_unique<CHAR[]>(sizeof(SYSTEM_PROCESS_INFORMATION));
             if (!buffer) return;
             if (!NT_SUCCESS(ZwQuerySystemInformationEx(SystemProcessInformation, buffer))) return;
             auto current = (PSYSTEM_PROCESS_INFORMATION)buffer.get();
@@ -2033,16 +2035,14 @@ namespace stc {
                         _threadEntry.tpDeltaPri = threadInfo->Priority;
                         _threadEntry.dwFlags = 0;
                         Thread thread(_threadEntry);
-                        if (!thread.IsRunning()||!thread) continue;   //如果线程不在运行状态,那么就跳过  if thread is not running,then skip
-                        if(thread.IsWait())continue;    //如果线程处于等待状态,那么就跳过  if thread is wait status,then skip
+                        if (!thread) continue;   //如果线程不在运行状态,那么就跳过  if thread is not running,then skip
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
                     }
                 }
-                auto nextOffset = current->NextEntryOffset;
-                if (nextOffset == 0)break;
-                current = (PSYSTEM_PROCESS_INFORMATION)((ULONG_PTR)current + nextOffset);
+                if (!current->NextEntryOffset)break;
+                current = (PSYSTEM_PROCESS_INFORMATION)((ULONG_PTR)current + current->NextEntryOffset);
             }
         }
         INLINE void ClearMemory() NOEXCEPT {
@@ -2096,7 +2096,7 @@ namespace stc {
                     if (lpShell&& myevent) {
                         m_vecAllocMem.emplace_back(lpShell);//
                         DATA_CONTEXT dataContext{};
-                        memcpy(dataContext.ShellCode, ContextInjectShell, sizeof(ContextInjectShell));
+                        memcpy_s(dataContext.ShellCode, sizeof(ContextInjectShell), ContextInjectShell, sizeof(ContextInjectShell));
                         if constexpr(sizeof...(Arg)>0)preprocess(std::forward<Arg&>(args)...);//process parameter  处理参数
                         threadData.fn = _Fx;
                         if constexpr(sizeof...(Arg)>0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
@@ -2139,14 +2139,11 @@ namespace stc {
         }
     };
     void startProcessIfNotFound(const char* exeName) {
-        auto findprocess = [&](const char* processName)->bool {
+        auto findprocess = [&](const char* processName,THANDLE hProcessSnap= CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0))->bool {
             PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) , };
-            THANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
             if (!hProcessSnap)return false;
             auto found = false;
-            for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32)) {
-                if (found = _ucsicmp(pe32.szExeFile, processName))break;
-            }
+            for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
             return found;
         };
         if (!findprocess(exeName)) {
@@ -2158,7 +2155,7 @@ namespace stc {
                 }
                 Sleep(100);
             }
-            printf(xor_str("%s"), xor_str("sleeped done!\n"));
+            printf(xor_str("%s sleeped done!\n"), exeName);
         }else {
             printf(xor_str("Process %s is already running.\n"), exeName);
         }
