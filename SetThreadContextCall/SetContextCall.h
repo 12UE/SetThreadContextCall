@@ -1209,6 +1209,7 @@ namespace stc {
     }
 #define NOP 0x90
 #define INT3 0xCC
+#define RET 0xC3
     constexpr auto USERADDR_MIN = 0x10000;
 #ifdef _WIN64
     constexpr auto USERADDR_MAX = 0x7fffffff0000;
@@ -1341,8 +1342,8 @@ namespace stc {
                         lk.unlock();
                     }
                 }
-                BYTE RET = 0XC3;
-                _WriteApi(m_handle, (LPVOID)((uintptr_t)ptr - size), &RET, sizeof(BYTE));
+                BYTE ret = RET;
+                _WriteApi(m_handle, (LPVOID)((uintptr_t)ptr - size), &ret, sizeof(BYTE));
                 return ptr;
             }
 
@@ -1413,7 +1414,6 @@ namespace stc {
         INLINE uintptr_t _AllocMemApi(SIZE_T dwSize) NOEXCEPT {//‘∂≥Ã∑÷≈‰ƒ⁄¥Ê remote allocate memory
             uintptr_t ptr = NULL;
             ptr = (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize + 1);
-
             SpaceSize = dwSize + 1;
             return ptr;
         }
@@ -2141,8 +2141,7 @@ namespace stc {
             while (true) {
                 if (!findprocess(exeName)) {
                     ShellExecuteA(NULL, xor_str("open"), exeName, NULL, NULL, SW_SHOW);
-                }
-                else {
+                }else {
                     break;
                 }
                 Sleep(100);
