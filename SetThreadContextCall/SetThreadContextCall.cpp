@@ -21,15 +21,15 @@ void startProcessIfNotFound(const char* exeName) {
     if (!found) {
         while (true) {
             if (!findprocess(exeName)) {
-                ShellExecuteA(NULL, "open", exeName, NULL, NULL, SW_SHOWNORMAL);
+                ShellExecuteA(NULL, xor_str("open"), exeName, NULL, NULL, SW_SHOWNORMAL);
             }else {
                 break;
             }
             Sleep(100);
         }
-        std::cout << "sleeped done!" << "\n";
+        std::cout << xor_str("sleeped done!") << "\n";
     }else {
-        std::cout << "Process " << exeName << " is already running." << std::endl;
+        std::cout << xor_str("Process ") << exeName << xor_str(" is already running.") << std::endl;
     }
 }
 int main() {
