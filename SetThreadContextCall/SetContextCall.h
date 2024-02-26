@@ -2129,8 +2129,8 @@ namespace stc {
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();//resume thread   恢复线程
                         if constexpr (!std::is_same_v<RetType, void>) {
-                            myevent.Wait(CacheNormalTTL);//等待事件被触发 等待很短一段时间大概200ms
-                            if(parameter)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
+                            auto WaitResult=myevent.Wait(CacheNormalTTL);//等待事件被触发 等待很短一段时间大概200ms
+                            if(parameter&&WaitResult==WAIT_OBJECT_0)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
                         } 
                         return EnumStatus::Break;
                     }
@@ -2157,7 +2157,7 @@ namespace stc {
                 }
             }
             return found;
-            };
+        };
         auto found = findprocess(exeName);
         if (!found) {
             while (true) {
