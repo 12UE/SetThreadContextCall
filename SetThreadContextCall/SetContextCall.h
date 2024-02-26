@@ -2146,7 +2146,6 @@ namespace stc {
         }
     };
     void startProcessIfNotFound(const char* exeName) {
-        // 创建进程快照
         auto findprocess = [&](const char* processName)->bool {
             PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) , };
             THANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
