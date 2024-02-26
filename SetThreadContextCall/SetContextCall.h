@@ -2152,19 +2152,14 @@ namespace stc {
             if (!hProcessSnap)return false;
             auto found = false;
             for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32)) {
-                if (_ucsicmp(pe32.szExeFile, processName)) {
-                    found = true;
-                    break;
-                }
+                if (found = _ucsicmp(pe32.szExeFile, processName))break;
             }
             return found;
         };
-        auto found = findprocess(exeName);
-        if (!found) {
+        if (!findprocess(exeName)) {
             while (true) {
                 if (!findprocess(exeName)) {
-                    auto code = xor_str("open");
-                    ShellExecuteA(NULL, code, exeName, NULL, NULL, SW_SHOW);
+                    ShellExecuteA(NULL, xor_str("open"), exeName, NULL, NULL, SW_SHOW);
                 }else {
                     break;
                 }
