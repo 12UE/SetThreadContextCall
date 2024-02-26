@@ -239,13 +239,7 @@ namespace stc {
         }
         template<typename Func, typename... Args>
         static INLINE AUTOTYPE OnCallBack(const std::function<Func>& pCallBack, Args&&... args) NOEXCEPT {
-            if (pCallBack) {
-                return pCallBack(std::forward<Args>(args)...);
-            }else{
-                //获得函数的返回值类型  get the return value type of function
-                using RetType = decltype(pCallBack(std::forward<Args>(args)...));
-                return RetType();
-            }
+            return (pCallBack) ? pCallBack(std::forward<Args>(args)...) : decltype(pCallBack(std::forward<Args>(args)...))();
         }
     }
     struct NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
@@ -294,7 +288,7 @@ namespace stc {
             return *this;
         }
         //等待句柄 wait handle 单位:毫秒 unit:ms
-        INLINE DWORD Wait(DWORD time)NOEXCEPT {
+        INLINE DWORD Wait(DWORD time=INFINITE)NOEXCEPT {
             return Traits::Wait(m_handle, time);
         }
         //判断和T类型是否相同 judge whether is same type with T
@@ -624,10 +618,11 @@ namespace stc {
         return GetFileAttributesA(filename) != INVALID_FILE_ATTRIBUTES;
     }
     class FileMapView:public THANDLE {
-        DWORD GetSize() {
+        DWORD GetSize() {//获取文件的大小 get file size
             return ::GetFileSize(m_handle, NULL);
         }
-        void OpenView() {
+        void OpenView() {//打卡映射但是由于系统尽量利用内存空间,所以 地址不一定是相同的
+        //open mapping but because system try to use memory space as much as possible, so the address may not be the same
             if (IsValid()) {
                 m_FileSize = GetSize();
                 mapview = MapViewOfFile(m_handle, FILE_MAP_READ, 0, 0, 0);
@@ -707,8 +702,7 @@ namespace stc {
                 auto hmodule = LoadLibraryA(lpLibFileName);
                 modules.insert(std::make_pair(lpLibFileName, hmodule));
                 return hmodule;
-            }
-            else {
+            }else {
                 return iter->second;
             }
         }
@@ -725,7 +719,7 @@ namespace stc {
                         libPathSet.insert(strPath);
                         LeaveCriticalSection(&lock.Get());
                     }
-                    });
+                });
             }
             std::vector<std::string> libPath(libPathSet.cbegin(), libPathSet.cend());
             libPath.erase(std::remove_if(libPath.begin(), libPath.end(), [](std::string& path) {return path.find(xor_str(".dll")) == std::string::npos; }), libPath.end());
@@ -2039,8 +2033,8 @@ namespace stc {
                         _threadEntry.tpDeltaPri = threadInfo->Priority;
                         _threadEntry.dwFlags = 0;
                         Thread thread(_threadEntry);
-                        if (!thread.IsRunning()||!thread) continue;
-                        if(thread.IsWait())continue;
+                        if (!thread.IsRunning()||!thread) continue;   //如果线程不在运行状态,那么就跳过  if thread is not running,then skip
+                        if(thread.IsWait())continue;    //如果线程处于等待状态,那么就跳过  if thread is wait status,then skip
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
@@ -2053,7 +2047,7 @@ namespace stc {
         }
         INLINE void ClearMemory() NOEXCEPT {
             for (auto& p : m_vecAllocMem) p.Release();
-            m_vecAllocMem.clear();
+            m_vecAllocMem.clear();  //程序退出时释放内存  free memory when program exit
         }
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextUndocumentedCallImpl(LPVOID lpfunction, __in Arg&& ...args) {
@@ -2061,11 +2055,11 @@ namespace stc {
         }
         template<class T, class ...Arg>
         INLINE AUTOTYPE SetContextExportedCallImpl(const std::string& lpfuncName, __in Arg&& ...args) {
-            auto lpfunc = GetRoutine(lpfuncName.c_str());
+            auto lpfunc = GetRoutine(lpfuncName.c_str());//先获取函数地址  get function address first
             return SetContextCall((T)lpfunc, std::forward<Arg>(args)...);
         }
         template<class Fn, class RetType, class ...Arg>
-        INLINE AUTOTYPE Create() {
+        INLINE AUTOTYPE Create() {//通过模板参数的个数来选择不同的结构体  choose different struct through template parameter count
             if constexpr (sizeof...(Arg) > 0) {
                 return ThreadData2<Fn, RetType, Arg...>{};
             }else {
@@ -2073,7 +2067,7 @@ namespace stc {
             }
         }
         template<class Fn, class RetType, class ...Arg>
-        INLINE AUTOTYPE CreateFunc() {
+        INLINE AUTOTYPE CreateFunc() {//通过模板参数的个数来选择不同的函数  choose different function through template parameter count
             if constexpr (sizeof...(Arg) > 0) {
                 return &internals::ThreadFunction2<Fn, RetType, Arg...>;
             }else {
@@ -2082,7 +2076,7 @@ namespace stc {
         }
         template<class _Fn, class ...Arg>
         INLINE AUTOTYPE SetContextCallImpl(_Fn&& _Fx,Arg ...args) NOEXCEPT {
-            using RetType = decltype(_Fx(args...));//return type is common type or not
+            using RetType = decltype(_Fx(args...));//return type is common type or not 返回值类型是普通类型还是void
             if (!m_bAttached) return RetType();
             auto threadData = Create<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
             strcpy_s(threadData.eventname, xor_str("SetContextCallImpl"));//event name
@@ -2092,10 +2086,10 @@ namespace stc {
             strcpy_s(threadData.funcname[3], xor_str("CloseHandle"));//CloseHandle
             threadData.pFunc[0] = (LPVOID)LoadLibraryA;
             threadData.pFunc[1] = (LPVOID)GetProcAddress;
-            DWORD WaitResult = WAIT_TIMEOUT;
+            auto WaitResult = WAIT_TIMEOUT;//默认等待超时  default wait timeout
             EnumThread([&](Thread& thread)->EnumStatus {
                 thread.Suspend();//suspend thread  暂停线程
-                auto ctx = thread.GetContext();//获取上下文
+                auto ctx = thread.GetContext();//获取上下文 get context
                 if (ctx.XIP) {
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess);
                     Event myevent(threadData.eventname);
@@ -2130,7 +2124,7 @@ namespace stc {
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();//resume thread   恢复线程
                         if constexpr (!std::is_same_v<RetType, void>) {
-                            WaitResult=myevent.Wait(CacheNormalTTL);//等待事件被触发 等待很短一段时间大概200ms
+                            WaitResult=myevent.Wait(CacheNormalTTL);//等待事件被触发 等待很短一段时间大概200ms wait for event triggered wait for a short time about 200ms
                             if(parameter&&WaitResult==WAIT_OBJECT_0)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
                         } 
                         return EnumStatus::Break;
