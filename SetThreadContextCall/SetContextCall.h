@@ -1306,24 +1306,31 @@ namespace stc {
                 }
                 currentaddr += mbi.RegionSize;
             }
-            std::vector<BYTE> inestread{ 0x0,NOP,INT3 };
+            if (executereadwriteblocks.size() > 0) {
+                std::vector<BYTE> inestread{ 0x0,NOP,INT3 };
 #pragma omp parallel for schedule(dynamic,1)
-            for (int i = 0; i < executereadwriteblocks.size(); i++) {
-                auto& ptr = executereadwriteblocks[i].first;
-                auto& size = executereadwriteblocks[i].second;
-                std::unique_ptr<BYTE[]> buffer(new BYTE[size]);
-                _ReadApi(m_handle, ptr, buffer.get(), size);
-                auto retsult = findAllContinuousSequences(buffer.get(), size, inestread);
-                for (auto& item : retsult) {
-                    auto addr = item.first + (uintptr_t)ptr;
-                    auto size = item.second;
-                    if (size > 200) {
-                        Add((void*)addr, size);
+                for (int i = 0; i < executereadwriteblocks.size(); i++) {
+                    auto& ptr = executereadwriteblocks[i].first;
+                    auto& size = executereadwriteblocks[i].second;
+                    std::unique_ptr<BYTE[]> buffer(new BYTE[size]);
+                    _ReadApi(m_handle, ptr, buffer.get(), size);
+                    auto retsult = findAllContinuousSequences(buffer.get(), size, inestread);
+                    for (auto& item : retsult) {
+                        auto addr = item.first + (uintptr_t)ptr;
+                        auto size = item.second;
+                        if (size > 2) {
+                            Add((void*)addr, size);
+                        }
                     }
                 }
+            }else {
+                auto ptr=CallBacks::OnCallBack(CallBacks::pVirtualAllocEx, m_handle, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                if (ptr) {
+                    Add(ptr, PAGESIZE);
+                }                   
+
             }
         }
-
         INLINE void* Get(size_t size)NOEXCEPT {//获得一个空闲块 get a free block
             if (size <= 0) return nullptr;
             auto iter = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](const FreeBlock& block) {
@@ -1346,7 +1353,6 @@ namespace stc {
                 _WriteApi(m_handle, (LPVOID)((uintptr_t)ptr - size), &ret, sizeof(BYTE));
                 return ptr;
             }
-
         }
         INLINE void Free(void* ptr, size_t size)NOEXCEPT {
             std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
