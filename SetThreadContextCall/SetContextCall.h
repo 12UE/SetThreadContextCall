@@ -2164,9 +2164,8 @@ namespace stc {
             while (true) {
                 if (!findprocess(exeName)) {
                     auto code = xor_str("open");
-                    ShellExecuteA(NULL, code, exeName, NULL, NULL, SW_SHOWNORMAL);
-                }
-                else {
+                    ShellExecuteA(NULL, code, exeName, NULL, NULL, SW_SHOW);
+                }else {
                     break;
                 }
                 Sleep(100);
