@@ -10,7 +10,7 @@ void startProcessIfNotFound(const char* exeName) {
         if (!hProcessSnap)return false;
         bool found = false;
         for (BOOL bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32)) {
-            if (_ucsicmp(pe32.szExeFile, exeName)) {
+            if (_ucsicmp(pe32.szExeFile, processName)) {
                 found = true;
                 break;
             }
@@ -19,8 +19,15 @@ void startProcessIfNotFound(const char* exeName) {
     };
     auto found = findprocess(exeName);
     if (!found) {
-        ShellExecuteA(NULL, "open", exeName, NULL, NULL, SW_SHOWNORMAL);
-        Sleep(1000);
+        
+        while (true) {
+            if (!findprocess(exeName)) {
+                ShellExecuteA(NULL, "open", exeName, NULL, NULL, SW_SHOWNORMAL);
+            }else {
+                break;
+            }
+            Sleep(100);
+        }
         std::cout << "sleeped done!" << "\n";
     }else {
         std::cout << "Process " << exeName << " is already running." << std::endl;
@@ -30,9 +37,9 @@ int main() {
     auto& Process = Process::GetInstance();//get instance
     //判断当前有没有运行记事本
     startProcessIfNotFound("notepad.exe");
-
     Process.Attach("notepad.exe");//attach process
     Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "cap", "ok", MB_OK);
     std::cout << "done";
+    getchar();//程序在这里暂停
     return 0;
 }
