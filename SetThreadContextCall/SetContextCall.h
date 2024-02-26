@@ -302,7 +302,7 @@ namespace stc {
         virtual INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
             return m_handle;
         }
-        virtual INLINE operator bool() NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
+        virtual INLINE operator bool()NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
             return IsValid();
         }
         //重载取地址 overload get address of handle 
@@ -1720,7 +1720,7 @@ namespace stc {
             }
         }
         INLINE int SuspendCount() { return m_nSuspendCount; }
-        bool IsWait() {
+        INLINE bool IsWait()NOEXCEPT {
             Suspend();
             auto ctx=GetContext();
             uintptr_t current=(uintptr_t)ctx.XIP;
@@ -1733,7 +1733,7 @@ namespace stc {
             Resume();
             return state;
         }
-        operator bool()  noexcept override {
+        INLINE operator bool() NOEXCEPT override {
             return IsRunning()&&!IsWait()&&m_handle&&m_handle!=INVALID_HANDLE_VALUE;
         }
     };
