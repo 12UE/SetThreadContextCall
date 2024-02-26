@@ -25,9 +25,6 @@
 #ifdef _DEBUG
 #error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
 #endif
-#ifndef _OPENMP
-#error "项目没有openmp环境 属性->C/C++->语言->OpenMP 支持  project does not have openmp environment property->C/C++->language->OpenMP support"
-#endif
 #define INLINE inline
 #define NOEXCEPT noexcept   //不抛出异常 no throw exception
 #define MAXKEYSIZE 0x10000
@@ -2059,12 +2056,13 @@ namespace stc {
             m_vecAllocMem.clear();
         }
         template<class T, class ...Arg>
-        INLINE AUTOTYPE SetContextUndocumentedCallImpl(LPVOID lpfunction, __in Arg ...args) {
-            SetContextCallImpl((T)lpfunction, args...);
+        INLINE AUTOTYPE SetContextUndocumentedCallImpl(LPVOID lpfunction, __in Arg&& ...args) {
+            SetContextCallImpl((T)lpfunction,std::forward<Arg>(args)...);
         }
         template<class T, class ...Arg>
-        INLINE AUTOTYPE SetContextExportedCallImpl(LPVOID lpfunc, __in Arg ...args) {
-            return SetContextCall((T)lpfunc, args...);
+        INLINE AUTOTYPE SetContextExportedCallImpl(const std::string& lpfuncName, __in Arg&& ...args) {
+            auto lpfunc = GetRoutine(lpfuncName.c_str());
+            return SetContextCall((T)lpfunc, std::forward<Arg>(args)...);
         }
         template<class Fn, class RetType, class ...Arg>
         INLINE AUTOTYPE Create() {
