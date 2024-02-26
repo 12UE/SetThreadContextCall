@@ -540,8 +540,7 @@ namespace stc {
                 *szEnvPathTemp2 = '\0';
                 PathList.emplace_back(szEnvPathTemp);
                 szEnvPathTemp = szEnvPathTemp2 + 1;
-            }
-            else {
+            }else {
                 PathList.emplace_back(szEnvPathTemp);
                 break;
             }
@@ -873,8 +872,7 @@ namespace stc {
             if (it == lengthbuffer.end()) {
                 nLen = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, NULL, 0);
                 lengthbuffer.insert(std::make_pair(str, nLen));
-            }
-            else {
+            }else {
                 nLen = it->second;
             }
             if (nLen == 0) return L"";
@@ -885,38 +883,33 @@ namespace stc {
             if (it2 == wstringbuffer.end()) {
                 MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, pwszDst.get(), nLen);
                 wstringbuffer.insert(std::make_pair(str, std::wstring(pwszDst.get())));
-            }
-            else {
+            }else {
                 memcpy(pwszDst.get(), it2->second.c_str(), nLen * sizeof(wchar_t));
             }
             std::wstring wstr(pwszDst.get());
             return wstr;
-            };
+        };
         if constexpr (!std::is_same_v<remove_const_pointer_t<Tx>, wchar_t>) {
             strtemp = str1;
             wstr1 = to_wstring(strtemp);
-        }
-        else {
+        }else {
             wstr1 = str1;
         }
         if constexpr (!std::is_same_v<remove_const_pointer_t<Ty>, wchar_t>) {
             strtemp = str2;
             wstr2 = to_wstring(strtemp);
-        }
-        else {
+        }else {
             wstr2 = str2;
         }
         static std::unordered_map<size_t, bool> equalmap;
-        //计算hash值    calculate hash value
         static auto hash = [](const std::wstring& str)->size_t {
             static std::hash<std::wstring> hash_fn;
             return hash_fn(str);
-            };
+        };
         auto hash1 = hash(wstr1);
-        //combine hash value 合并hash值
         auto combinehash = [](size_t hash1, size_t hash2)->size_t {
             return hash1 ^ (hash2 << 1);
-            };
+        };
         auto hash2 = hash(wstr2);
         auto hashvalue = combinehash(hash1, hash2);
         auto it = equalmap.find(hashvalue);
@@ -926,8 +919,7 @@ namespace stc {
             auto equal = wstr1.compare(wstr2) == 0;        //容易忘记这里写什么才是正确的,这里是0,因为compare返回0表示相等 easy to forget what to write here is correct,here is 0,because compare return 0 means equal
             equalmap.emplace(std::make_pair(hashvalue, equal));
             return equal;
-        }
-        else {
+        }else {
             return it->second;
         }
     }
@@ -992,8 +984,7 @@ namespace stc {
             auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
             if constexpr (sizeof...(Args) > 0) {
                 if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T(std::forward<Args>(args)...);
-            }
-            else {
+            }else {
                 if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T();
             }
             Instance<T> ret(*(uintptr_t*)p, (LPVOID)p, Owend, hFile);
@@ -1150,8 +1141,7 @@ namespace stc {
                 auto lb = m_Cache.find(_key);
                 if (lb != m_Cache.end()) {
                     lb->second = newValue;
-                }
-                else {
+                }else {
                     EnterCriticalSection(&lock.Get());//加锁 lock
                     m_Cache.insert(lb, pair_type(_key, newValue));
                     LeaveCriticalSection(&lock.Get());//解锁 unlock
@@ -1163,7 +1153,7 @@ namespace stc {
                     for (auto it = m_Cache.begin(); it != m_Cache.end();) it = (!it->second.IsValid(nowTime)) ? m_Cache.erase(it) : ++it;
                     LeaveCriticalSection(&lock.Get());//解锁 unlock
                 }
-                });
+            });
         }
         INLINE  std::pair<iterator, bool> find(const _Tx& value)NOEXCEPT {
             keyType _key = keyType(value, value);
@@ -1941,8 +1931,7 @@ namespace stc {
                 std::future<RetType> fut = promise.get_future();
                 promise.set_value(retdata);//设置承诺值 set promise value
                 return fut;
-            }
-            else {
+            }else {
                 SetContextCallImpl(_Fx, std::forward<Arg>(args)...);
             }
         }
