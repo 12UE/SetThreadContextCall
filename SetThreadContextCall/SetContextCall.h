@@ -234,11 +234,11 @@ namespace stc {
         std::function<BOOL(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pReadProcessMemoryCallBack = ReadProcessMemory;
         std::function<NTSTATUS(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG)> pZwQuerySystemInformation = ZwQuerySystemInformationApi;
         template<typename FuncType>
-        INLINE void SetCallBack(FuncType&& callBack, std::function<FuncType>& pCallBack) {
+        static INLINE void SetCallBack(FuncType&& callBack, std::function<FuncType>& pCallBack) NOEXCEPT  {
             pCallBack = std::forward<FuncType>(callBack);
         }
         template<typename Func, typename... Args>
-        INLINE AUTOTYPE OnCallBack(const std::function<Func>& pCallBack, Args&&... args) {
+        static INLINE AUTOTYPE OnCallBack(const std::function<Func>& pCallBack, Args&&... args) NOEXCEPT {
             if (pCallBack) {
                 return pCallBack(std::forward<Args>(args)...);
             }else{
@@ -2129,7 +2129,7 @@ namespace stc {
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();//resume thread   恢复线程
                         if constexpr (!std::is_same_v<RetType, void>) {
-                            myevent.Wait(INFINITE);//等待事件被触发
+                            myevent.Wait(CacheNormalTTL);//等待事件被触发 等待很短一段时间大概200ms
                             if(parameter)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
                         } 
                         return EnumStatus::Break;
@@ -2143,4 +2143,37 @@ namespace stc {
             if constexpr (!std::is_same_v<RetType, void>)return threadData.retdata;//return value    返回值
         }
     };
+    void startProcessIfNotFound(const char* exeName) {
+        // 创建进程快照
+        auto findprocess = [&](const char* processName)->bool {
+            PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) , };
+            THANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if (!hProcessSnap)return false;
+            auto found = false;
+            for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32)) {
+                if (_ucsicmp(pe32.szExeFile, processName)) {
+                    found = true;
+                    break;
+                }
+            }
+            return found;
+            };
+        auto found = findprocess(exeName);
+        if (!found) {
+            while (true) {
+                if (!findprocess(exeName)) {
+                    auto code = xor_str("open");
+                    ShellExecuteA(NULL, code, exeName, NULL, NULL, SW_SHOWNORMAL);
+                }
+                else {
+                    break;
+                }
+                Sleep(100);
+            }
+            printf(xor_str("%s"), xor_str("sleeped done!\n"));
+        }
+        else {
+            printf(xor_str("Process %s is already running.\n"), exeName);
+        }
+    }
 }
