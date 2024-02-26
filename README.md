@@ -14,6 +14,11 @@ memcpy是一个标准的C库函数，用于在内存中复制字节，通常用�
 尽管ReadProcessMemory和memcpy都可以用于操作内存，但是在进程内部的虚拟地址上获取数据可能是毫无意义的。这是因为每个进程都有自己的虚拟地址空间，这些地址空间是相互隔离的。因此，一个进程中的指针在另一个进程中可能没有意义，或者可能指向完全不同的数据。
 
 此外，虚拟地址并不总是对应于实际的物理内存。操作系统使用虚拟内存技术，将虚拟地址映射到物理内存。这意味着，即使你有一个进程的虚拟地址，你也不能直接访问它对应的物理内存。你需要通过操作系统提供的机制，如ReadProcessMemory或memcpy，来访问这些内存
+在计算机编程中，劫持线程的上下文是一种高级技术，它允许程序员在运行时修改程序的执行流。这种技术的基本原理是通过修改线程的指令指针（在x86架构中是EIP，而在x64架构中则是RIP）来实现的。一旦指令指针被修改，线程将调用程序员指定的函数，而非原本计划执行的代码。
+
+这种方法的一个关键优势是它支持有参数或无参数的函数调用，为开发者提供了极大的灵活性。然而，为了确保这种技术的有效性和稳定性，它要求目标程序必须在release模式下编译。这是因为debug模式下编译的程序通常包含额外的调试信息和检查，这些可能会干扰指令指针的修改或函数调用的过程。
+
+劫持线程的上下文可以在多种场景下使用，包括但不限于程序修补、功能扩展或软件安全领域。通过这种技术，开发者可以在不修改原始程序代码的情况下，注入自定义的功能或修复，从而增强软件的功能或修正潜在的安全漏洞。然而，鉴于这种技术的复杂性和潜在的安全风险，它应当谨慎使用，确保不会对用户的系统安全构成威胁
 ### 注意
 编译环境:Visual Studio 2022 Profresional.  只支持x64因为x86取函数长度有问题
 ## 使用方法
@@ -70,6 +75,11 @@ The Challenge of Internal Virtual Addresses
 Although ReadProcessMemory and memcpy can both be used for memory operations, retrieving data from virtual addresses within a process may be meaningless. This is because each process has its own virtual address space, and these address spaces are isolated from each other. Therefore, a pointer in one process may have no meaning in another process, or it may point to completely different data.
 
 In addition, virtual addresses do not always correspond to actual physical memory. The operating system uses virtual memory technology to map virtual addresses to physical memory. This means that even if you have a virtual address of a process, you cannot directly access its corresponding physical memory. You need to use mechanisms provided by the operating system, such as ReadProcessMemory or memcpy, to access this memory.
+In computer programming, hijacking a thread's context is an advanced technique that allows programmers to modify the execution flow of a program at runtime. This technique is fundamentally achieved by modifying the thread's instruction pointer (EIP on x86 architectures and RIP on x64 architectures). Once the instruction pointer is altered, the thread will call a function specified by the programmer instead of executing the originally intended code.
+
+A key advantage of this method is its support for both parameterized and parameterless function calls, offering developers great flexibility. However, for this technique to be effective and stable, the target program must be compiled in release mode. This is because programs compiled in debug mode usually contain extra debugging information and checks that could interfere with the modification of the instruction pointer or the process of function calling.
+
+Hijacking a thread's context can be used in various scenarios, including but not limited to program patching, feature augmentation, or in the field of software security. Through this technique, developers can inject custom functionalities or fixes without altering the original program code, thereby enhancing the software's capabilities or correcting potential security vulnerabilities. However, given the complexity and potential security risks of this technique, it should be used with caution to ensure it does not pose a threat to the user's system security.
 
 ### Disclaimer
 
@@ -96,6 +106,9 @@ memcpyは、メモリ内のバイトをコピーするための標準的なCラ�
 内部仮想アドレスの課題 ReadProcessMemoryとmemcpyの両方がメモリ操作に使用できる一方で、プロセス内の仮想アドレスからデータを取得することは無意味である可能性があります。これは、各プロセスが独自の仮想アドレス空間を持ち、これらのアドレス空間が互いに隔離されているためです。したがって、あるプロセスのポインタは、別のプロセスでは意味をなさないか、完全に異なるデータを指す可能性があります。
 
 さらに、仮想アドレスは常に実際の物理メモリに対応しているわけではありません。オペレーティングシステムは仮想メモリ技術を使用して、仮想アドレスを物理メモリにマッピングします。これは、プロセスの仮想アドレスを持っていても、その対応する物理メモリに直接アクセスすることはできないことを意味します。このメモリにアクセスするためには、ReadProcessMemoryやmemcpyなど、オペレーティングシステムが提供するメカニズムを使用する必要があります。この説明が役立つことを願っています！
+コンピュータープログラミングにおいて、スレッドのコンテキストをハイジャックすることは、プログラマーがランタイムでプログラムの実行フローを変更できる高度な技術です。この技術は、基本的にはスレッドの命令ポインター（x86アーキテクチャではEIP、x64アーキテクチャではRIP）を変更することによって達成されます。命令ポインターが変更されると、スレッドはプログラマーが指定した関数を呼び出し、もともと実行される予定だったコードの代わりに実行されます。
+
+この方法の主な利点は、パラメーター付きおよびパラメーターなしの関数呼び出しの両方をサポートしている点にあり、開発者に大きな柔軟性を提供します。しかし、この技術を効果的かつ安定して使用するためには、対象プログラムをリリースモードでコンパイ
 ### 免責事項
 このオープンソースプロジェクト（以下、「本プロジェクト」とします）は、開発者が無償で提供し、オープンソースライセンスに基づいて公開されています。本プロジェクトは参考と学習のためだけに提供され、利用者は自己のリスクを負うべきです。
 
