@@ -6,10 +6,10 @@ void startProcessIfNotFound(const char* exeName) {
     // 创建进程快照
     auto findprocess = [&](const char* processName)->bool{
         PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) ,};
-        GenericHandle<HANDLE, NormalHandle> hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        THANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (!hProcessSnap)return false;
-        bool found = false;
-        for (BOOL bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32)) {
+        auto found = false;
+        for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32)) {
             if (_ucsicmp(pe32.szExeFile, processName)) {
                 found = true;
                 break;
@@ -19,7 +19,6 @@ void startProcessIfNotFound(const char* exeName) {
     };
     auto found = findprocess(exeName);
     if (!found) {
-        
         while (true) {
             if (!findprocess(exeName)) {
                 ShellExecuteA(NULL, "open", exeName, NULL, NULL, SW_SHOWNORMAL);
