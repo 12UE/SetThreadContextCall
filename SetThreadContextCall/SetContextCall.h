@@ -100,15 +100,17 @@ namespace stc {
         HANDLE UniqueThread;
     } CLIENT_ID;
     typedef struct _SYSTEM_THREAD_INFORMATION {
-        LARGE_INTEGER Reserved1[3];
-        ULONG Reserved2;
-        PVOID StartAddress;
-        CLIENT_ID ClientId;
-        KPRIORITY Priority;
-        LONG BasePriority;
-        ULONG Reserved3;
-        ULONG ThreadState;
-        ULONG WaitReason;
+        LARGE_INTEGER KernelTime;  // 内核模式下的时间
+        LARGE_INTEGER UserTime;    // 用户模式下的时间
+        LARGE_INTEGER CreateTime;  // 线程创建时间
+        ULONG WaitTime;            // 线程等待时间
+        PVOID StartAddress;        // 线程起始地址
+        CLIENT_ID ClientId;        // 包含线程ID和进程ID
+        KPRIORITY Priority;        // 线程优先级
+        LONG BasePriority;         // 基本优先级
+        ULONG ContextSwitches;     // 上下文切换次数
+        ULONG ThreadState;         // 线程状态
+        ULONG WaitReason;          // 等待原因
     } SYSTEM_THREAD_INFORMATION, * PSYSTEM_THREAD_INFORMATION;
     typedef struct _SYSTEM_PROCESS_INFORMATION {
         ULONG NextEntryOffset;
@@ -1103,9 +1105,10 @@ namespace stc {
     }
     struct FreeBlock {//空闲块 free block
         FreeBlock() = default;
-        FreeBlock(void* _ptr, size_t _size, bool allocate = false) :size(_size), ptr(_ptr), bAllocate(allocate) {}
+        FreeBlock(void* _ptr, size_t _size, bool allocate, DWORD _protect) :size(_size), ptr(_ptr), bAllocate(allocate), protect(_protect) {}
         size_t size;//大小 size
         void* ptr;  //指针 pointer
+        DWORD protect;
         bool bAllocate;
     };
     INLINE BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) NOEXCEPT {//远程释放内存 remote free 
@@ -1205,7 +1208,7 @@ namespace stc {
         }
     };
     static constexpr INLINE  bool CheckMask(const DWORD value, const DWORD mask)NOEXCEPT {//判断vakue和mask是否相等    judge whether value and mask is equal
-        return (mask && (value & mask)) && (value <= mask);
+        return (mask && (value & mask) == value) && (value <= mask);
     }
 #define NOP 0x90
 #define INT3 0xCC
@@ -1280,7 +1283,7 @@ namespace stc {
         std::deque<FreeBlock> m_freeBlocks;
         std::mutex m_mutex;
         using iterator = decltype(m_freeBlocks)::iterator;
-        std::unordered_map<void*, size_t> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
+        std::unordered_map<void*, std::tuple<size_t, bool, DWORD>> g_allocMap;//记录了每块分配出去的内存大小 record the size of each block of allocated memory
         FreeBlock* m_head;
     public:
         FreeBlockList(HANDLE hprocess) : m_head(nullptr) {
@@ -1291,88 +1294,97 @@ namespace stc {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_freeBlocks.clear();
         }
-        INLINE void Add(void* ptr, size_t size, bool bAllcate = false) NOEXCEPT {//加入一个空闲块 add a free block
+        INLINE void Add(void* ptr, size_t size, bool bAllcate, DWORD protect) NOEXCEPT {//加入一个空闲块 add a free block
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_freeBlocks.push_back({ ptr,size ,bAllcate });
+            m_freeBlocks.push_back({ ptr,size ,bAllcate ,protect });
         }
         INLINE void FindCodecavesToFreeList() {
-            std::vector<std::pair<void*, size_t>> executereadwriteblocks;
-            MEMORY_BASIC_INFORMATION mbi{};
+            thread_local MEMORY_BASIC_INFORMATION mbi{};
             uintptr_t currentaddr = USERADDR_MIN;
+            std::vector<BYTE> inestread{ 0x0,NOP,INT3 };
             while (currentaddr < USERADDR_MAX) {
-                VirtualQueryCacheApi(m_handle, (LPVOID)currentaddr, &mbi);
-                if (mbi.State == MEM_COMMIT && CheckMask(mbi.Protect, PAGE_EXECUTE_READ)) {
-                    executereadwriteblocks.emplace_back(mbi.BaseAddress, mbi.RegionSize);
-                }
-                currentaddr += mbi.RegionSize;
-            }
-            if (executereadwriteblocks.size() > 0) {
-                std::vector<BYTE> inestread{ 0x0,NOP,INT3 };
-#pragma omp parallel for schedule(dynamic,1)
-                for (int i = 0; i < executereadwriteblocks.size(); i++) {
-                    auto& ptr = executereadwriteblocks[i].first;
-                    auto& size = executereadwriteblocks[i].second;
-                    std::unique_ptr<BYTE[]> buffer(new BYTE[size]);
-                    _ReadApi(m_handle, ptr, buffer.get(), size);
-                    auto retsult = findAllContinuousSequences(buffer.get(), size, inestread);
-                    for (auto& item : retsult) {
-                        auto addr = item.first + (uintptr_t)ptr;
-                        auto size = item.second;
-                        if (size > 2) {
-                            Add((void*)addr, size);
+                auto fut = std::async([&]() {
+                    VirtualQueryExApi(m_handle, (LPVOID)currentaddr, &mbi, sizeof(mbi));
+                    if (mbi.State == MEM_COMMIT && !CheckMask(mbi.Protect, PAGE_NOACCESS | PAGE_GUARD)) {
+                        std::unique_ptr<BYTE[]> buffer(new BYTE[mbi.RegionSize]);
+                        _ReadApi(m_handle, mbi.BaseAddress, buffer.get(), mbi.RegionSize);
+                        auto retsult = findAllContinuousSequences(buffer.get(), mbi.RegionSize, inestread);
+                        for (auto& item : retsult) {
+                            if (item.second >= (PAGESIZE / 2)) Add((void*)(item.first + (uintptr_t)mbi.BaseAddress), item.second - 1, false, mbi.Protect);
                         }
                     }
-                }
-            }else {
-                auto ptr=CallBacks::OnCallBack(CallBacks::pVirtualAllocEx, m_handle, nullptr, PAGESIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-                if (ptr) {
-                    Add(ptr, PAGESIZE);
-                }                   
-
+                    currentaddr += mbi.RegionSize;
+                    });
             }
         }
-        INLINE void* Get(size_t size)NOEXCEPT {//获得一个空闲块 get a free block
+        INLINE void* Get(size_t size, DWORD protect)NOEXCEPT {//获得一个空闲块 get a free block
             if (size <= 0) return nullptr;
-            auto iter = std::find_if(m_freeBlocks.begin(), m_freeBlocks.end(), [&](const FreeBlock& block) {
-                return block.size >= size;
+            auto isSuitableBlock = [&](const FreeBlock& block) {
+                return block.size >= size && CheckMask(block.protect, protect);
+                };
+
+            auto iter = std::min_element(m_freeBlocks.begin(), m_freeBlocks.end(),
+                [&](const FreeBlock& a, const FreeBlock& b) {
+                    bool isAValid = isSuitableBlock(a);
+                    bool isBValid = isSuitableBlock(b);
+
+                    if (isAValid && isBValid)
+                        return a.size < b.size; // 如果两个block都有效，则返回size较小的那个
+                    else if (isAValid)
+                        return true; // 如果只有A有效，则返回A
+                    else
+                        return false; // 如果只有B有效，或者都不有效，返回false
                 });
             if (iter != m_freeBlocks.end()) {
+                MEMORY_BASIC_INFORMATION mbi{};
+                VirtualQueryExApi(m_handle, iter->ptr, &mbi, sizeof(mbi));
+                if ((uintptr_t)iter->ptr < USERADDR_MIN || (uintptr_t)iter->ptr >= USERADDR_MAX || !CheckMask(iter->protect, mbi.Protect)) {
+                    iter->protect = mbi.Protect;
+                    return Get(size, protect);
+                }
                 //空闲链表当中有    find in free block list
                 auto& block = *iter;
                 //空闲链表当中的块减去size  free block list minus size
-                block.size -= size;
-                auto ptr = (void*)(((uintptr_t)block.ptr) + block.size);
-                std::unique_lock<std::mutex> lk(m_mutex, std::defer_lock);
-                if (block.size == 0) {
-                    if (lk.try_lock()) {
-                        m_freeBlocks.erase(iter);
-                        lk.unlock();
+                if (block.size > 0) {
+                    block.size -= size;
+                    auto ptr = (void*)(((uintptr_t)block.ptr) + block.size);
+                    std::unique_lock<std::mutex> lk(m_mutex, std::defer_lock);
+                    if (block.size == 0) {
+                        if (lk.try_lock()) {
+                            m_freeBlocks.erase(iter);
+                            lk.unlock();
+                        }
                     }
+                    return ptr;
                 }
-                BYTE ret = RET;
-                _WriteApi(m_handle, (LPVOID)((uintptr_t)ptr - size), &ret, sizeof(BYTE));
-                return ptr;
             }
+            return nullptr;
         }
         INLINE void Free(void* ptr, size_t size)NOEXCEPT {
             std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
-            if (ptr)Add(ptr, size);
-            //查找当前有没有块大PAGE_SIZE   find whether there is a block larger than PAGE_SIZE
+            auto iter = g_allocMap.find(ptr);
+            if (iter != g_allocMap.end() && ptr) {
+                std::cout << "free:" << std::hex << ptr << std::endl;
+                Add(ptr, size, std::get<1>(iter->second), std::get<2>(iter->second));
+            }
         }
-        INLINE void* mallocex(size_t size)NOEXCEPT {
-            auto ptr = Get(size);
-            g_allocMap[ptr] = size;
+        INLINE void* mallocex(size_t size, DWORD protect)NOEXCEPT {
+            if (size <= 0) throw std::runtime_error(xor_str("invalid remmote allcate size!"));
+            auto ptr = Get(size, protect);
+            if ((uintptr_t)ptr<USERADDR_MIN && (uintptr_t)ptr>USERADDR_MAX) throw std::runtime_error(xor_str("no remote memory!"));
+            g_allocMap[ptr] = { size,false,protect };
             return ptr;
         }
         INLINE void freeex(void* ptr)NOEXCEPT {
             auto it = g_allocMap.find(ptr);
+            if ((uintptr_t)ptr<USERADDR_MIN && (uintptr_t)ptr>USERADDR_MAX && it != g_allocMap.end()) throw std::runtime_error(xor_str("no remote memory!"));
             if (it == g_allocMap.end()) return;
-            Free(ptr, it->second);
+            Free(ptr, std::get<0>(it->second));
             g_allocMap.erase(it);
         }
     };
-    INLINE void* mallocex(HANDLE hProcess, size_t size) {
-        void* ptr = FreeBlockList::GetInstance(hProcess).mallocex(size);//调用单例模式的函数 call singleton function
+    INLINE void* mallocex(HANDLE hProcess, size_t size, DWORD protect) {
+        void* ptr = FreeBlockList::GetInstance(hProcess).mallocex(size, protect);//调用单例模式的函数 call singleton function
         return ptr;
     }
     INLINE void freeex(HANDLE hProcess, void* ptr) {
@@ -1412,6 +1424,7 @@ namespace stc {
     class Shared_Ptr {//一种外部线程的智能指针,当引用计数为0时释放内存 a smart pointer of external thread,release memory when reference count is 0
         HANDLE m_hProcess;//并不持有 进程句柄而是一种视图,不负责关闭进程句柄 not hold process handle but a HandleView,not responsible for closing process handle
         LPVOID BaseAddress = nullptr;
+        DWORD protect;
         std::atomic_int refCount = 0;
         int SpaceSize = 0;
         void AddRef() NOEXCEPT {
@@ -1419,8 +1432,9 @@ namespace stc {
         }
         INLINE uintptr_t _AllocMemApi(SIZE_T dwSize) NOEXCEPT {//远程分配内存 remote allocate memory
             uintptr_t ptr = NULL;
-            ptr = (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize + 1);
-            SpaceSize = dwSize + 1;
+            ptr = (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize, protect);
+            SpaceSize = dwSize;
+
             return ptr;
         }
         INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//远程释放内存 remote free memory
@@ -1428,8 +1442,9 @@ namespace stc {
             return true;
         }
     public:
-        INLINE Shared_Ptr(void* Addr, HANDLE hProc) : m_hProcess(hProc) {
+        INLINE Shared_Ptr(void* Addr, HANDLE hProc, DWORD _protect) : m_hProcess(hProc) {
             BaseAddress = Addr;
+
             AddRef();
         }
         template<class T>
@@ -1437,8 +1452,9 @@ namespace stc {
             AddRef();//新建一个指针引用计数加一 reference count plus one means a new pointer points to this memory
             BaseAddress = (LPVOID)_AllocMemApi(sizeof(T));
         }
-        INLINE Shared_Ptr(size_t nsize, HANDLE hProc) :m_hProcess(hProc) {
+        INLINE Shared_Ptr(size_t nsize, HANDLE hProc, DWORD _protect) :m_hProcess(hProc) {
             AddRef();//引用计数加一说明有一个新的指针指向了这块内存 reference count plus one means a new pointer points to this memory
+            protect = _protect;
             BaseAddress = (LPVOID)_AllocMemApi(nsize);
         }
         INLINE Shared_Ptr(const Shared_Ptr& other) : BaseAddress(other.BaseAddress) {
@@ -1485,7 +1501,7 @@ namespace stc {
         //判不等
         INLINE bool operator!=(const Shared_Ptr& other) NOEXCEPT { return BaseAddress != other.BaseAddress; }
     };
-    template<class T>Shared_Ptr make_Shared(HANDLE hprocess, size_t nsize = 1) NOEXCEPT { return Shared_Ptr(sizeof(T) * nsize, hprocess); }
+    template<class T>Shared_Ptr make_Shared(HANDLE hprocess, size_t nsize, DWORD _protect) NOEXCEPT { return Shared_Ptr(sizeof(T) * nsize, hprocess, _protect); }
     template<class BinFunc>
     INLINE size_t GetFunctionSize(const BinFunc& func) NOEXCEPT {//获取函数大小,纯属经验之谈 get function size,just experience
         auto p = (PBYTE)func;
@@ -1560,6 +1576,7 @@ namespace stc {
             auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
             //加载OpenEventA
             auto ntdll = pLoadLibrary(threadData->funcname[0]);
+            HANDLE hEventHandle = INVALID_HANDLE_VALUE;
             auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
             //打开事件
             auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
@@ -1587,7 +1604,8 @@ namespace stc {
                 auto hEvent = pLoadLibrary(threadData->funcname[0]);
                 auto pOpenEventA = (POPENEVENTA)pGetProAddress(hEvent, threadData->funcname[1]);
                 //打开事件
-                auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
+                HANDLE hEventHandle = INVALID_HANDLE_VALUE;
+                hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
                 //设置事件
                 auto pSetEvent = (PSETEVENT)pGetProAddress(hEvent, threadData->funcname[2]);
                 pSetEvent(hEventHandle);
@@ -1876,15 +1894,16 @@ namespace stc {
         INLINE void preprocessparameter(const char*& arg) NOEXCEPT {
             auto nlen = 0;
             if (arg) nlen = (int)strlen(arg) + 1;
-            auto p = make_Shared<char>(m_hProcess, nlen * sizeof(char));
+            auto p = make_Shared<char>(m_hProcess, nlen * sizeof(char), PAGE_READWRITE);
             m_vecAllocMem.push_back(p);
+
             WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(char));
             arg = p.raw<const char*>();
         }//process const char* parameter    处理const char*参数
         INLINE void preprocessparameter(const wchar_t*& arg) {
             auto nlen = 0;
             if (arg) nlen = (int)wcslen(arg) + 1;
-            auto p = make_Shared<wchar_t>(m_hProcess, nlen * sizeof(wchar_t));
+            auto p = make_Shared<wchar_t>(m_hProcess, nlen * sizeof(wchar_t), PAGE_EXECUTE_READ);
             m_vecAllocMem.push_back(p);
             WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(wchar_t));
             arg = p.raw<const wchar_t*>();
@@ -1893,7 +1912,7 @@ namespace stc {
         INLINE void ProcessPtr(T& ptr) NOEXCEPT {
             if (ptr) {
                 int Size = sizeof(T);//get size of parameter    获取参数大小
-                auto p = make_Shared<BYTE>(m_hProcess, Size);
+                auto p = make_Shared<BYTE>(m_hProcess, Size, PAGE_EXECUTE_READ);
                 if (p) {
                     m_vecAllocMem.emplace_back(p);//emplace back into vector avoid memory leak can be clear through clearmemory   emplace back到vector中避免内存泄漏可以通过clearmemory清除
                     WriteApi(p.get<LPVOID>(), (LPVOID)ptr, Size);//write value to allocated address for parameter is pointer   写入值到分配地址，因为参数是指针
@@ -2008,6 +2027,7 @@ namespace stc {
             if (!buffer) return;
             if (!NT_SUCCESS(ZwQuerySystemInformationEx(SystemProcessInformation, buffer))) return;
             auto current = (PSYSTEM_PROCESS_INFORMATION)buffer.get();
+            static THREADENTRY32 choosethread{};
             while (TRUE) {
                 for (ULONG i = 0; i < current->NumberOfThreads; i++) {
                     auto threadInfo = (PSYSTEM_THREAD_INFORMATION)((ULONG_PTR)current + FIELD_OFFSET(SYSTEM_PROCESS_INFORMATION, Threads) + i * sizeof(SYSTEM_THREAD_INFORMATION));
@@ -2018,8 +2038,15 @@ namespace stc {
                         _threadEntry.tpBasePri = threadInfo->BasePriority;
                         _threadEntry.tpDeltaPri = threadInfo->Priority;
                         _threadEntry.dwFlags = 0;
-                        Thread thread(_threadEntry);
-                        if (!thread) continue;   //如果线程不在运行状态,那么就跳过  if thread is not running,then skip
+                        auto RunningTime = threadInfo->KernelTime.QuadPart + threadInfo->UserTime.QuadPart;
+                        if (RunningTime <= CacheNormalTTL * 2) continue;
+                        if (!choosethread.th32ThreadID) {
+                            choosethread = _threadEntry;
+                        }
+                        Thread thread(choosethread);
+                        while (!thread) {
+                            Sleep(15);
+                        }
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
@@ -2086,7 +2113,8 @@ namespace stc {
                 thread.Suspend();//suspend thread  暂停线程
                 auto ctx = thread.GetContext();//获取上下文 get context
                 if (ctx.XIP) {
-                    auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess);
+                    auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess, 1, PAGE_EXECUTE_READ);
+                    std::cout << std::hex << lpShell.raw<uintptr_t>() << std::endl;
                     Event myevent(threadData.eventname);
                     if (lpShell && myevent) {
                         m_vecAllocMem.emplace_back(lpShell);//
@@ -2098,7 +2126,8 @@ namespace stc {
                         auto pFunction = CreateFunc<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
                         //get function address  获取函数地址
                         auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
-                        auto lpFunction = make_Shared<BYTE>(m_hProcess, length);//allocate memory for function  分配内存
+                        auto lpFunction = make_Shared<BYTE>(m_hProcess, length, PAGE_EXECUTE_READ);//allocate memory for function  分配内存
+                        std::cout << std::hex << lpFunction.raw<uintptr_t>() << std::endl;
                         if (!lpFunction)return EnumStatus::Continue;
                         m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
                         WriteApi(lpFunction.get<LPVOID>(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
@@ -2106,10 +2135,9 @@ namespace stc {
                         dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
                         LPVOID parameter = 0;
                         if constexpr (sizeof...(Arg) > 0) {
-                            auto lpParameter = make_Shared<decltype(threadData)>(m_hProcess);//allocate memory for parameter    分配内存
+                            auto lpParameter = make_Shared<decltype(threadData)>(m_hProcess, 1, PAGE_READWRITE);//allocate memory for parameter    分配内存
+                            std::cout << std::hex << lpParameter.raw<uintptr_t>() << std::endl;
                             if (lpParameter) {
-                                DWORD oldprotect = 0;
-                                CallBacks::OnCallBack(CallBacks::pVirtualProtectExCallBack, m_hProcess, lpParameter.get<LPVOID>(), sizeof(thread), PAGE_EXECUTE_READWRITE, &oldprotect);
                                 m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
                                 WriteApi(lpParameter.get<LPVOID>(), &threadData, sizeof(threadData));//write parameter  写参数
                                 dataContext.lpParameter = lpParameter.raw<PBYTE>();//set parameter address  设置参数地址
@@ -2147,7 +2175,8 @@ namespace stc {
             while (true) {
                 if (!findprocess(exeName)) {
                     ShellExecuteA(NULL, xor_str("open"), exeName, NULL, NULL, SW_SHOW);
-                }else {
+                }
+                else {
                     break;
                 }
                 Sleep(100);
