@@ -2044,9 +2044,6 @@ namespace stc {
                             choosethread = _threadEntry;
                         }
                         Thread thread(choosethread);
-                        while (!thread) {
-                            Sleep(15);
-                        }
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
