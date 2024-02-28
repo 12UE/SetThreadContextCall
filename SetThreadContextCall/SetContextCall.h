@@ -23,7 +23,7 @@
 #include <winnt.h>
 #include <any>
 #ifdef _DEBUG
-#error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
+//#error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
 #endif
 #define INLINE inline
 #define NOEXCEPT noexcept   //不抛出异常 no throw exception
@@ -199,6 +199,19 @@ namespace stc {
         SetFuncLastError(status);
         return status;
     }
+    NTSTATUS NtSuspendThread(HANDLE ThreadHandle, PULONG PreviousSuspendCount) {
+        typedef NTSTATUS(NTAPI* NtSuspendThreadType)(HANDLE ThreadHandle, PULONG PreviousSuspendCount);
+        static auto ntdll = GetModuleHandleA(xor_str("ntdll.dll"));
+        NTSTATUS status = STATUS_INVALID_PARAMETER;
+        if (ntdll) {
+            static auto NtSuspendThread = reinterpret_cast<NtSuspendThreadType>(GetProcAddress(ntdll, xor_str("NtSuspendThread")));
+            if (NtSuspendThread) {
+                status = NtSuspendThread(ThreadHandle, PreviousSuspendCount);
+            }
+        }
+        SetFuncLastError(status);
+        return status;
+    }
     enum CallBackType {
         VirtualProtectExCallBack,
         VirtualFreeExCallBack,
@@ -237,6 +250,7 @@ namespace stc {
         std::function<ULONG(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pWriteProcessMemoryCallBack = WriteProcessMemory;
         std::function<BOOL(HANDLE, LPVOID, LPVOID, SIZE_T, SIZE_T*)> pReadProcessMemoryCallBack = ReadProcessMemory;
         std::function<NTSTATUS(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG)> pZwQuerySystemInformation = ZwQuerySystemInformationApi;
+        std::function<NTSTATUS(HANDLE, PULONG)> pNtSuspendThread = NtSuspendThread;
         template<typename FuncType>
         static INLINE void SetCallBack(FuncType&& callBack, std::function<FuncType>& pCallBack) NOEXCEPT {
             pCallBack = std::forward<FuncType>(callBack);
@@ -245,6 +259,9 @@ namespace stc {
         static INLINE AUTOTYPE OnCallBack(const std::function<Func>& pCallBack, Args&&... args) NOEXCEPT {
             return (pCallBack) ? pCallBack(std::forward<Args>(args)...) : decltype(pCallBack(std::forward<Args>(args)...))();
         }
+    }
+    INLINE NTSTATUS NtSuspendThreadApi(HANDLE ThreadHandle, PULONG PreviousSuspendCount) {
+        return CallBacks::OnCallBack(CallBacks::pNtSuspendThread, ThreadHandle, PreviousSuspendCount);
     }
     INLINE ULONG _ReadApi(HANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
         SIZE_T bytesRead = 0;
@@ -1301,21 +1318,35 @@ namespace stc {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_freeBlocks.push_back({ ptr,size ,bAllcate ,protect });
         }
-        INLINE void FindCodecavesToFreeList() {
+        INLINE bool FindCodecavesToFreeList(uintptr_t minaddr = USERADDR_MIN, uintptr_t maxaddr = USERADDR_MAX) {
             MEMORY_BASIC_INFORMATION mbi{};
-            uintptr_t currentaddr = USERADDR_MIN;
-            while (currentaddr < USERADDR_MAX) {
+            uintptr_t currentaddr = minaddr;
+            bool bBlock = false;
+            std::vector<std::tuple<uintptr_t, uintptr_t, bool, DWORD>> blocks;
+            while (currentaddr < maxaddr) {
                 VirtualQueryExApi(m_handle, (LPVOID)currentaddr, &mbi, sizeof(mbi));
                 if (mbi.State == MEM_COMMIT && !CheckMask(mbi.Protect, PAGE_NOACCESS | PAGE_GUARD)) {
                     std::unique_ptr<BYTE[]> buffer(new BYTE[mbi.RegionSize]);
                     _ReadApi(m_handle, mbi.BaseAddress, buffer.get(), mbi.RegionSize);
                     auto result = findAllContinuousSequences(buffer.get(), mbi.RegionSize, inestread);
                     for (auto& item : result) {
-                        if (item.second >= 12) Add((void*)(item.first + (uintptr_t)mbi.BaseAddress), item.second, false, mbi.Protect);
+                        if (item.second >= 24) {
+                            blocks.emplace_back(item.first + (uintptr_t)(mbi.BaseAddress), item.second, false, mbi.Protect);
+                            bBlock = true;
+                        }
                     }
                 }
                 currentaddr += mbi.RegionSize;
             }
+#pragma omp parallel for schedule(dynamic,1)
+            for (int i = 0; i < blocks.size(); i++) {
+                auto addr = std::get<0>(blocks[i]);
+                auto size = std::get<1>(blocks[i]);
+                auto isallcate = std::get<2>(blocks[i]);
+                auto protect = std::get<3>(blocks[i]);
+                Add((void*)(addr + 12), size - 12, isallcate, protect);
+            }
+            return bBlock;
         }
         INLINE void* Get(size_t size, DWORD protect)NOEXCEPT {//获得一个空闲块 get a free block
             if (size <= 0) return nullptr;
@@ -1339,6 +1370,14 @@ namespace stc {
                 //保护类型发生改变
                 MEMORY_BASIC_INFORMATION mbi{};
                 VirtualQueryExApi(m_handle, iter->ptr, &mbi, sizeof(mbi));
+
+                std::unique_ptr<BYTE[]> MemoryData(new BYTE[mbi.RegionSize]);
+                if (mbi.BaseAddress)_ReadApi(m_handle, mbi.BaseAddress, MemoryData.get(), mbi.RegionSize);
+                auto continuesdata = findAllContinuousSequences(MemoryData.get(), mbi.RegionSize, inestread);
+                if (continuesdata.size() == 0) {
+                    m_freeBlocks.erase(iter);
+                    return Get(size, protect);
+                }
                 if ((uintptr_t)iter->ptr < USERADDR_MIN || (uintptr_t)iter->ptr >= USERADDR_MAX || !CheckMask(iter->protect, mbi.Protect)) {
                     iter->protect = mbi.Protect;
                     return Get(size, protect);
@@ -1347,8 +1386,9 @@ namespace stc {
                 auto& block = *iter;
                 //空闲链表当中的块减去size  free block list minus size
                 if (block.size > 0) {
+                    auto ptr = block.ptr;
+                    block.ptr = (void*)((uintptr_t)block.ptr + size);//向后移动
                     block.size -= size;
-                    auto ptr = (void*)(((uintptr_t)block.ptr) + block.size);
                     std::unique_lock<std::mutex> lk(m_mutex, std::defer_lock);
                     if (block.size == 0) {
                         if (lk.try_lock()) {
@@ -1700,10 +1740,7 @@ namespace stc {
             return *this;
         }
         ~Thread() NOEXCEPT {
-            int suspendcount = m_nSuspendCount;
-            for (auto i = 0; i < suspendcount; i++) {
-                Resume();//这里会修改m_nSuspendCount
-            }
+
         }
         INLINE HANDLE GetHandle() NOEXCEPT { return m_handle; }//获取线程句柄  get thread handle
         INLINE bool IsRunning() NOEXCEPT {
@@ -1758,6 +1795,13 @@ namespace stc {
         }
         INLINE operator bool() NOEXCEPT override {
             return IsRunning() && !IsWait() && m_handle && m_handle != INVALID_HANDLE_VALUE;
+        }
+        INLINE DWORD CurrentSuspendCount() NOEXCEPT {
+            ULONG count = 0;
+            if (m_bAttached) {
+                NtSuspendThreadApi(m_handle, &count);
+            }
+            return count;
         }
     };
     template <typename T>
