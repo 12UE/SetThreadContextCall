@@ -22,9 +22,9 @@
 #include <unordered_set>
 #include <winnt.h>
 #include <any>
-//ifdef _DEBUG
-//error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
-//endif
+#ifdef _DEBUG
+#error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
+#endif
 #define INLINE inline
 #define NOEXCEPT noexcept   //不抛出异常 no throw exception
 #define MAXKEYSIZE 0x10000
@@ -355,6 +355,7 @@ namespace stc {
         }
     };
     using THANDLE = GenericHandle<HANDLE, NormalHandle>;
+    using FHANDLE = GenericHandle<HANDLE, FileHandle>;
     using _THANDLE = GenericHandle<HANDLE, HandleView<NormalHandle>>;
     class Event :public THANDLE {
     public:
@@ -362,7 +363,7 @@ namespace stc {
         Event(const char* EventName, bool bManualReset = false) {
             m_handle = CreateEventA(NULL, bManualReset, FALSE, EventName);
         }
-        void OpenEvent(const char* EventName) {
+        void _OpenEvent(const char* EventName) {
             m_handle = OpenEventA(EVENT_ALL_ACCESS, FALSE, EventName);
         }
         //set
@@ -489,7 +490,7 @@ namespace stc {
         WIN32_FIND_DATAA findData{};
         std::vector<std::string> fullPaths;
         bool bRet = true;
-        for (GenericHandle<HANDLE, FileHandle> hFind = FindFirstFileA((path + "\\*").c_str(), &findData); bRet && hFind; bRet = FindNextFileA(hFind, &findData)) {
+        for (FHANDLE hFind = FindFirstFileA((path + "\\*").c_str(), &findData); bRet && hFind; bRet = FindNextFileA(hFind, &findData)) {
             const std::string fileName = findData.cFileName;
             const std::string fullPath = path + "\\" + fileName;
             if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -1220,7 +1221,7 @@ namespace stc {
     constexpr auto USERADDR_MAX = 0xBFFE'FFFF;
 #endif
     static SimpleRangeCache<uintptr_t, MEMORY_BASIC_INFORMATION> cache;
-
+    std::vector<BYTE> inestread{ 0x0,NOP,INT3 };
     INLINE SIZE_T VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)NOEXCEPT {//这里的hProcess可以是进程的ID
         return CallBacks::OnCallBack(CallBacks::pVirtualQueryEx, hProcess, lpAddress, lpBuffer, dwLength);
     }
@@ -1246,6 +1247,8 @@ namespace stc {
     INLINE BOOL VirtualProtectExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)NOEXCEPT {
         return CallBacks::OnCallBack(CallBacks::pVirtualProtectExCallBack, hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
     }
+    //第一个元素 (int) 表示序列在数据中的起始位置。
+    //第二个元素(uintptr_t) 表示该序列的长度。
     std::vector<std::pair<int, uintptr_t>> findAllContinuousSequences(const unsigned char* data, size_t size, const std::vector<unsigned char>& bytes) {
         std::unordered_map<unsigned char, std::vector<std::pair<int, uintptr_t>>> sequencesByByte;
         std::unordered_map<unsigned char, std::pair<int, uintptr_t>> currentSequence;
@@ -1299,22 +1302,19 @@ namespace stc {
             m_freeBlocks.push_back({ ptr,size ,bAllcate ,protect });
         }
         INLINE void FindCodecavesToFreeList() {
-            thread_local MEMORY_BASIC_INFORMATION mbi{};
+            MEMORY_BASIC_INFORMATION mbi{};
             uintptr_t currentaddr = USERADDR_MIN;
-            std::vector<BYTE> inestread{ 0x0,NOP,INT3 };
             while (currentaddr < USERADDR_MAX) {
-                auto fut = std::async([&]() {
-                    VirtualQueryExApi(m_handle, (LPVOID)currentaddr, &mbi, sizeof(mbi));
-                    if (mbi.State == MEM_COMMIT && !CheckMask(mbi.Protect, PAGE_NOACCESS | PAGE_GUARD)) {
-                        std::unique_ptr<BYTE[]> buffer(new BYTE[mbi.RegionSize]);
-                        _ReadApi(m_handle, mbi.BaseAddress, buffer.get(), mbi.RegionSize);
-                        auto retsult = findAllContinuousSequences(buffer.get(), mbi.RegionSize, inestread);
-                        for (auto& item : retsult) {
-                            if (item.second >= (PAGESIZE / 2)) Add((void*)(item.first + (uintptr_t)mbi.BaseAddress), item.second - 1, false, mbi.Protect);
-                        }
+                VirtualQueryExApi(m_handle, (LPVOID)currentaddr, &mbi, sizeof(mbi));
+                if (mbi.State == MEM_COMMIT && !CheckMask(mbi.Protect, PAGE_NOACCESS | PAGE_GUARD)) {
+                    std::unique_ptr<BYTE[]> buffer(new BYTE[mbi.RegionSize]);
+                    _ReadApi(m_handle, mbi.BaseAddress, buffer.get(), mbi.RegionSize);
+                    auto result = findAllContinuousSequences(buffer.get(), mbi.RegionSize, inestread);
+                    for (auto& item : result) {
+                        if (item.second >= 12) Add((void*)(item.first + (uintptr_t)mbi.BaseAddress), item.second, false, mbi.Protect);
                     }
-                    currentaddr += mbi.RegionSize;
-                    });
+                }
+                currentaddr += mbi.RegionSize;
             }
         }
         INLINE void* Get(size_t size, DWORD protect)NOEXCEPT {//获得一个空闲块 get a free block
@@ -1336,6 +1336,7 @@ namespace stc {
                         return false; // 如果只有B有效，或者都不有效，返回false
                 });
             if (iter != m_freeBlocks.end()) {
+                //保护类型发生改变
                 MEMORY_BASIC_INFORMATION mbi{};
                 VirtualQueryExApi(m_handle, iter->ptr, &mbi, sizeof(mbi));
                 if ((uintptr_t)iter->ptr < USERADDR_MIN || (uintptr_t)iter->ptr >= USERADDR_MAX || !CheckMask(iter->protect, mbi.Protect)) {
@@ -1371,7 +1372,7 @@ namespace stc {
         INLINE void* mallocex(size_t size, DWORD protect)NOEXCEPT {
             if (size <= 0) throw std::runtime_error(xor_str("invalid remmote allcate size!"));
             auto ptr = Get(size, protect);
-            if ((uintptr_t)ptr<USERADDR_MIN && (uintptr_t)ptr>USERADDR_MAX) throw std::runtime_error(xor_str("no remote memory!"));
+            if ((uintptr_t)ptr<USERADDR_MIN || (uintptr_t)ptr>USERADDR_MAX) throw std::runtime_error(xor_str("no remote memory!"));
             g_allocMap[ptr] = { size,false,protect };
             return ptr;
         }
@@ -1640,7 +1641,8 @@ namespace stc {
         0x9d,								//popfq								//还原标志寄存器    restore flag register
         0x5b,								//pop	rbx
         0x58,								//pop	rax
-        0xc3,								//retn		
+        0xc3,								//retn
+        0xcc
     };
 #else
     BYTE ContextInjectShell[] = {	//x86.asm 书中的代码  the code in the book
@@ -1656,7 +1658,8 @@ namespace stc {
         0x87,0x44,0x24,0x24,				//xchg	eax,[esp+0x24]
         0x9d,								//popfd
         0x61,								//popad
-        0xc3								//retn
+        0xc3,								//retn
+        0xcc
     };
 #endif
     class Thread :public THANDLE {//把线程当做对象来处理  process thread as object
@@ -1895,18 +1898,22 @@ namespace stc {
             auto nlen = 0;
             if (arg) nlen = (int)strlen(arg) + 1;
             auto p = make_Shared<char>(m_hProcess, nlen * sizeof(char), PAGE_READWRITE);
-            m_vecAllocMem.push_back(p);
+            if (p) {
+                m_vecAllocMem.push_back(p);
+                WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(char));
+                arg = p.raw<const char*>();
+            }
 
-            WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(char));
-            arg = p.raw<const char*>();
         }//process const char* parameter    处理const char*参数
         INLINE void preprocessparameter(const wchar_t*& arg) {
             auto nlen = 0;
             if (arg) nlen = (int)wcslen(arg) + 1;
             auto p = make_Shared<wchar_t>(m_hProcess, nlen * sizeof(wchar_t), PAGE_EXECUTE_READ);
-            m_vecAllocMem.push_back(p);
-            WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(wchar_t));
-            arg = p.raw<const wchar_t*>();
+            if (p) {
+                m_vecAllocMem.push_back(p);
+                WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(wchar_t));
+                arg = p.raw<const wchar_t*>();
+            }
         }//process const wchar_t* parameter   处理const wchar_t*参数
         template<typename T>
         INLINE void ProcessPtr(T& ptr) NOEXCEPT {
@@ -2040,9 +2047,7 @@ namespace stc {
                         _threadEntry.dwFlags = 0;
                         auto RunningTime = threadInfo->KernelTime.QuadPart + threadInfo->UserTime.QuadPart;
                         if (RunningTime <= CacheNormalTTL * 2) continue;
-                        if (!choosethread.th32ThreadID) {
-                            choosethread = _threadEntry;
-                        }
+                        if (!choosethread.th32ThreadID)choosethread = _threadEntry;
                         Thread thread(choosethread);
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
