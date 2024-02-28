@@ -265,17 +265,7 @@ namespace stc {
     INLINE NTSTATUS NtSuspendThreadApi(HANDLE ThreadHandle, PULONG PreviousSuspendCount) {
         return CallBacks::OnCallBack(CallBacks::pNtSuspendThread, ThreadHandle, PreviousSuspendCount);
     }
-    INLINE ULONG _ReadApi(HANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
-        SIZE_T bytesRead = 0;
-        CallBacks::OnCallBack(CallBacks::pReadProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
-        return bytesRead;
-    }
-    //writeapi  
-    INLINE ULONG _WriteApi(HANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
-        SIZE_T bytesWritten = 0;
-        CallBacks::OnCallBack(CallBacks::pWriteProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
-        return bytesWritten;
-    }
+    
     struct NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
         INLINE static void Close(HANDLE& handle)NOEXCEPT {
             //CallBacks::OnCallBack(CallBacks::pCloseHandle,handle);
@@ -376,6 +366,17 @@ namespace stc {
     using THANDLE = GenericHandle<HANDLE, NormalHandle>;
     using FHANDLE = GenericHandle<HANDLE, FileHandle>;
     using _THANDLE = GenericHandle<HANDLE, HandleView<NormalHandle>>;
+    static INLINE ULONG _ReadApi(_THANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
+        SIZE_T bytesRead = 0;
+        if(m_hProcess)CallBacks::OnCallBack(CallBacks::pReadProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
+        return bytesRead;
+    }
+    //writeapi  
+    static INLINE ULONG _WriteApi(_THANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
+        SIZE_T bytesWritten = 0;
+        if (m_hProcess)CallBacks::OnCallBack(CallBacks::pWriteProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
+        return bytesWritten;
+    }
     class Event :public THANDLE {
     public:
         Event() = default;//默认构造
