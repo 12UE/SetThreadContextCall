@@ -238,6 +238,8 @@ namespace stc {
         std::function<DWORD(HANDLE, DWORD)> pWaitForSingleObject = WaitForSingleObject;
         std::function<void(HANDLE)> pCloseHandle = CloseHandle;
         std::function<HANDLE(DWORD, BOOL, DWORD)> pOpenThread = OpenThread;
+        //openprocess
+        std::function<HANDLE(DWORD, BOOL, DWORD)> pOpenProcess = OpenProcess;
         std::function<BOOL(HANDLE, LPDWORD)> pGetExitCodeThread = GetExitCodeThread;
         //设置获取线程上下文的回调  set get thread context callback
         std::function<BOOL(HANDLE, LPCONTEXT)> pGetThreadContext = GetThreadContext;
@@ -1994,7 +1996,7 @@ namespace stc {
 #ifdef DRIVER_MODE
                 m_hProcess = (HANDLE)m_pid;
 #else
-                m_hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_pid);//这里可以直接返回进程的id
+                m_hProcess = CallBacks::OnCallBack(CallBacks::pOpenProcess, PROCESS_ALL_ACCESS, FALSE, m_pid);
 #endif
                 if (m_hProcess)m_bAttached = true;
             }
