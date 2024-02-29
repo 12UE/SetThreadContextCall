@@ -23,7 +23,7 @@
 #include <winnt.h>
 #include <any>
 #ifdef _DEBUG
-//#error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
+#error "项目请用release模式编译 请勿使用debug模式编译 project please compile in release mode, do not use debug mode to compile"
 #endif
 #define INLINE inline
 #define NOEXCEPT noexcept   //不抛出异常 no throw exception
