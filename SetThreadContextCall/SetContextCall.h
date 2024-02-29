@@ -262,10 +262,6 @@ namespace stc {
             return (pCallBack) ? pCallBack(std::forward<Args>(args)...) : decltype(pCallBack(std::forward<Args>(args)...))();
         }
     }
-    INLINE NTSTATUS NtSuspendThreadApi(HANDLE ThreadHandle, PULONG PreviousSuspendCount) {
-        return CallBacks::OnCallBack(CallBacks::pNtSuspendThread, ThreadHandle, PreviousSuspendCount);
-    }
-    
     struct NormalHandle {//阐明了句柄的关闭方式和句柄的无效值智能句柄的Traits clarify the handle's close method and handle's invalid value smart handle's Traits
         INLINE static void Close(HANDLE& handle)NOEXCEPT {
             //CallBacks::OnCallBack(CallBacks::pCloseHandle,handle);
@@ -324,7 +320,7 @@ namespace stc {
             return m_handle != handle;
         }
         virtual INLINE operator T() NOEXCEPT {//将m_handle转换为T类型,实际就是句柄的类型 convert m_handle to T type,actually is the type of handle
-            return m_handle;
+            return get();
         }
         virtual INLINE operator bool()NOEXCEPT {//重载bool类型,判断句柄是否有效 overload bool type, judge handle is valid
             return IsValid();
@@ -337,8 +333,12 @@ namespace stc {
             return (Traits*)this;//强制转换为Traits类型 force convert to Traits type
         }
         virtual INLINE T get()NOEXCEPT {
-            refcount++;//增加引用计数 increase reference count
-            return m_handle;
+            if (IsValid()) {
+                return m_handle;
+            }
+            else {
+                return Traits::InvalidHandle();
+            }
         }
         virtual INLINE void Release() {
             //仅仅refcount>=0的时候
@@ -352,9 +352,9 @@ namespace stc {
             }
         }
         virtual INLINE void reset()NOEXCEPT {
+            m_bOwner = false;
             Release();
             m_handle = Traits::InvalidHandle();
-            m_bOwner = false;
         }
         virtual INLINE void attatch()NOEXCEPT {//获取所有权 get ownership
             m_bOwner = true;
@@ -366,16 +366,19 @@ namespace stc {
     using THANDLE = GenericHandle<HANDLE, NormalHandle>;
     using FHANDLE = GenericHandle<HANDLE, FileHandle>;
     using _THANDLE = GenericHandle<HANDLE, HandleView<NormalHandle>>;
-    static INLINE ULONG _ReadApi(_THANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
+    INLINE ULONG _ReadApi(_THANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
         SIZE_T bytesRead = 0;
-        if(m_hProcess)CallBacks::OnCallBack(CallBacks::pReadProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
+        if (m_hProcess)CallBacks::OnCallBack(CallBacks::pReadProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
         return bytesRead;
     }
     //writeapi  
-    static INLINE ULONG _WriteApi(_THANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
+    INLINE ULONG _WriteApi(_THANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
         SIZE_T bytesWritten = 0;
         if (m_hProcess)CallBacks::OnCallBack(CallBacks::pWriteProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
         return bytesWritten;
+    }
+    INLINE NTSTATUS NtSuspendThreadApi(HANDLE ThreadHandle, PULONG PreviousSuspendCount) {
+        return CallBacks::OnCallBack(CallBacks::pNtSuspendThread, ThreadHandle, PreviousSuspendCount);
     }
     class Event :public THANDLE {
     public:
@@ -388,15 +391,15 @@ namespace stc {
         }
         //set
         INLINE void Set()NOEXCEPT {
-            SetEvent(m_handle);
+            SetEvent(get());
         }
         //reset
         INLINE void Reset()NOEXCEPT {
-            ResetEvent(m_handle);
+            ResetEvent(get());
         }
         //pulse
         INLINE void Pulse()NOEXCEPT {
-            PulseEvent(m_handle);
+            PulseEvent(get());
         }
     };
     typedef struct _PEB_LDR_DATA_64 {
@@ -766,7 +769,7 @@ namespace stc {
                 if (IsFileExistA(libPath[i].c_str())) {
                     THANDLE hFile = CreateFileA(libPath[i].c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
                     if (hFile) {
-                        auto	dwFileSize = GetFileSize(hFile, 0);
+                        auto	dwFileSize = GetFileSize(hFile.get(), 0);
                         std::vector<std::string> ExportFuncList{};
                         if ((dwFileSize / 8 / 1024) > 10) {
                             FileMapView mapview(hFile.get(), PAGE_READONLY);
@@ -1361,7 +1364,6 @@ namespace stc {
                 [&](const FreeBlock& a, const FreeBlock& b) {
                     bool isAValid = isSuitableBlock(a);
                     bool isBValid = isSuitableBlock(b);
-
                     if (isAValid && isBValid)
                         return a.size < b.size; // 如果两个block都有效，则返回size较小的那个
                     else if (isAValid)
@@ -1373,7 +1375,6 @@ namespace stc {
                 //保护类型发生改变
                 MEMORY_BASIC_INFORMATION mbi{};
                 VirtualQueryExApi(m_handle, iter->ptr, &mbi, sizeof(mbi));
-
                 std::unique_ptr<BYTE[]> MemoryData(new BYTE[mbi.RegionSize]);
                 if (mbi.BaseAddress)_ReadApi(m_handle, mbi.BaseAddress, MemoryData.get(), mbi.RegionSize);
                 auto continuesdata = findAllContinuousSequences(MemoryData.get(), mbi.RegionSize, inestread);
@@ -2217,7 +2218,7 @@ namespace stc {
             PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) , };
             if (!hProcessSnap)return false;
             auto found = false;
-            for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
+            for (auto bRet = Process32FirstW(hProcessSnap.get(), &pe32); bRet; bRet = Process32NextW(hProcessSnap.get(), &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
             return found;
             };
         if (!findprocess(exeName)) {
