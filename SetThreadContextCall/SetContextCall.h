@@ -1328,29 +1328,26 @@ namespace stc {
             MEMORY_BASIC_INFORMATION mbi{};
             uintptr_t currentaddr = minaddr;
             bool bBlock = false;
-            std::vector<std::tuple<uintptr_t, uintptr_t, bool, DWORD>> blocks;
+            std::vector<MEMORY_BASIC_INFORMATION> blocks;
             while (currentaddr < maxaddr) {
-                VirtualQueryExApi(m_handle, (LPVOID)currentaddr, &mbi, sizeof(mbi));
+                VirtualQueryCacheApi(m_handle, (LPVOID)currentaddr, &mbi);
+                blocks.emplace_back(mbi);
+                currentaddr += mbi.RegionSize;
+            }
+#pragma omp parallel for schedule(dynamic,1)
+            for (int i = 0; i < blocks.size(); i++) {
+                auto& mbi = blocks[i];
                 if (mbi.State == MEM_COMMIT && !CheckMask(mbi.Protect, PAGE_NOACCESS | PAGE_GUARD)) {
                     std::unique_ptr<BYTE[]> buffer(new BYTE[mbi.RegionSize]);
                     _ReadApi(m_handle, mbi.BaseAddress, buffer.get(), mbi.RegionSize);
                     auto result = findAllContinuousSequences(buffer.get(), mbi.RegionSize, inestread);
                     for (auto& item : result) {
                         if (item.second >= 24) {
-                            blocks.emplace_back(item.first + (uintptr_t)(mbi.BaseAddress), item.second, false, mbi.Protect);
+                            Add((void*)((uintptr_t)mbi.BaseAddress + 12), mbi.RegionSize - 12, false, mbi.Protect);
                             bBlock = true;
                         }
                     }
                 }
-                currentaddr += mbi.RegionSize;
-            }
-#pragma omp parallel for schedule(dynamic,1)
-            for (int i = 0; i < blocks.size(); i++) {
-                auto addr = std::get<0>(blocks[i]);
-                auto size = std::get<1>(blocks[i]);
-                auto isallcate = std::get<2>(blocks[i]);
-                auto protect = std::get<3>(blocks[i]);
-                Add((void*)(addr + 12), size - 12, isallcate, protect);
             }
             return bBlock;
         }
@@ -1359,7 +1356,6 @@ namespace stc {
             auto isSuitableBlock = [&](const FreeBlock& block) {
                 return block.size >= size && CheckMask(block.protect, protect);
                 };
-
             auto iter = std::min_element(m_freeBlocks.begin(), m_freeBlocks.end(),
                 [&](const FreeBlock& a, const FreeBlock& b) {
                     bool isAValid = isSuitableBlock(a);
@@ -2222,7 +2218,7 @@ namespace stc {
             PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) , };
             if (!hProcessSnap)return false;
             auto found = false;
-            for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
+            for (auto bRet = Process32FirstW(hProcessSnap.get(), &pe32); bRet; bRet = Process32NextW(hProcessSnap.get(), &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
             return found;
             };
         if (!findprocess(exeName)) {
