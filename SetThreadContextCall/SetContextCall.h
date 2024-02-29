@@ -146,7 +146,6 @@ namespace stc {
         LARGE_INTEGER OtherTransferCount;
         SYSTEM_THREAD_INFORMATION Threads[1];
     } SYSTEM_PROCESS_INFORMATION, * PSYSTEM_PROCESS_INFORMATION;
-
     static INLINE PIMAGE_NT_HEADERS GetNtHeader(LPVOID buffer) {
         auto pDosHeader = (PIMAGE_DOS_HEADER)buffer;
         if (!pDosHeader) return nullptr;
@@ -212,23 +211,6 @@ namespace stc {
         SetFuncLastError(status);
         return status;
     }
-    enum CallBackType {
-        VirtualProtectExCallBack,
-        VirtualFreeExCallBack,
-        VirtualAllocExCallBack,
-        VirtualQueryExCallBack,
-        WaitForSingleObjectCallBack,
-        CloseHandleCallBack,
-        OpenThreadCallBack,
-        GetExitCodeThreadCallBack,
-        GetThreadContextCallBack,
-        SetThreadContextCallBack,
-        SuspendThreadCallBack,
-        ResumeThreadCallBack,
-        WriteProcessMemoryCallBack,
-        ReadProcessMemoryCallBack,
-        ZwQuerySystemInformationCallBack
-    };
     namespace CallBacks {
         std::function<bool(HANDLE, LPVOID, SIZE_T, DWORD, PDWORD)> pVirtualProtectExCallBack = VirtualProtectEx;
         std::function<BOOL(HANDLE, LPVOID, SIZE_T, DWORD)> pVirtualFreeEx = VirtualFreeEx;
@@ -1405,7 +1387,6 @@ namespace stc {
             std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
             auto iter = g_allocMap.find(ptr);
             if (iter != g_allocMap.end() && ptr) {
-                std::cout << "free:" << std::hex << ptr << std::endl;
                 Add(ptr, size, std::get<1>(iter->second), std::get<2>(iter->second));
             }
         }
@@ -2164,7 +2145,6 @@ namespace stc {
                 auto ctx = thread.GetContext();//获取上下文 get context
                 if (ctx.XIP) {
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess, 1, PAGE_EXECUTE_READ);
-                    std::cout << std::hex << lpShell.raw<uintptr_t>() << std::endl;
                     Event myevent(threadData.eventname);
                     if (lpShell && myevent) {
                         m_vecAllocMem.emplace_back(lpShell);//
@@ -2177,7 +2157,6 @@ namespace stc {
                         //get function address  获取函数地址
                         auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
                         auto lpFunction = make_Shared<BYTE>(m_hProcess, length, PAGE_EXECUTE_READ);//allocate memory for function  分配内存
-                        std::cout << std::hex << lpFunction.raw<uintptr_t>() << std::endl;
                         if (!lpFunction)return EnumStatus::Continue;
                         m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
                         WriteApi(lpFunction.get<LPVOID>(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
@@ -2186,7 +2165,6 @@ namespace stc {
                         LPVOID parameter = 0;
                         if constexpr (sizeof...(Arg) > 0) {
                             auto lpParameter = make_Shared<decltype(threadData)>(m_hProcess, 1, PAGE_READWRITE);//allocate memory for parameter    分配内存
-                            std::cout << std::hex << lpParameter.raw<uintptr_t>() << std::endl;
                             if (lpParameter) {
                                 m_vecAllocMem.emplace_back(lpParameter);//push back to vector for free memory   push back到vector中以释放内存
                                 WriteApi(lpParameter.get<LPVOID>(), &threadData, sizeof(threadData));//write parameter  写参数
