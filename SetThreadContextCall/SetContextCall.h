@@ -2222,7 +2222,7 @@ namespace stc {
             PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) , };
             if (!hProcessSnap)return false;
             auto found = false;
-            for (auto bRet = Process32FirstW(hProcessSnap.get(), &pe32); bRet; bRet = Process32NextW(hProcessSnap.get(), &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
+            for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
             return found;
             };
         if (!findprocess(exeName)) {
