@@ -43,6 +43,7 @@ namespace stc {
 #define XORSTR_NIBBLE( _VALUE, _IDX ) ( ( _VALUE >> ( __min( _IDX, ( XORSTR_TYPE_SIZEOF( _VALUE ) * 2 ) - 1 ) * 4 ) ) & 0xF )
 #define XORSTR_MAKE_INTEGER_SEQUENCE( _LEN_ ) __make_integer_seq< XORSTR_INT_SEQ, SIZE_T, _LEN_ >( )
 #define XORSTR_INTEGER_SEQUENCE( _INDICES_ ) XORSTR_INT_SEQ< SIZE_T, _INDICES_... >
+
     template< typename _Ty, _Ty... Types >
     struct XORSTR_INT_SEQ {};
     XORSTR_CONST_NOINLINE INT XORSTR_ATOI8(IN CHAR Character) noexcept { return (Character >= '0' && Character <= '9') ? (Character - '0') : NULL; }
@@ -57,7 +58,7 @@ namespace stc {
     template< typename _CHAR_TYPE_, SIZE_T _STR_LENGTH_ >
     class _XORSTR_ {
         static XORSTR_CONST UINT64 Key = XORSTR_KEY(_STR_LENGTH_);
-        static XORSTR_CONST_INLINE _CHAR_TYPE_ CRYPT_CHAR(IN _CHAR_TYPE_ Character, IN SIZE_T KeyIndex) { return (Character ^ ((Key + KeyIndex) ^ (XORSTR_NIBBLE(Key, KeyIndex % 16)))); }
+        static XORSTR_CONST_INLINE _CHAR_TYPE_ CRYPT_CHAR(IN _CHAR_TYPE_ Character, IN SIZE_T KeyIndex) { return (Character ^ (((_CHAR_TYPE_)Key + KeyIndex) ^ (XORSTR_NIBBLE(Key, KeyIndex % 16)))); }
         template< SIZE_T... _INDEX_ >XORSTR_CONST_INLINE _XORSTR_(IN _CHAR_TYPE_ CONST(&String)[_STR_LENGTH_], IN XORSTR_INTEGER_SEQUENCE(_INDEX_) IntSeq) : StringData{ CRYPT_CHAR(String[_INDEX_], _INDEX_)... } {}
         XORSTR_VOLATILE _CHAR_TYPE_ StringData[_STR_LENGTH_];
     public:
@@ -73,6 +74,7 @@ namespace stc {
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< WCHAR, _STR_LEN_ > XorStr(IN WCHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< WCHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< char32_t, _STR_LEN_ > XorStr(IN char32_t CONST(&String)[_STR_LEN_]) { return _XORSTR_< char32_t, _STR_LEN_ >(String); }
 #define xor_str( _STR_ ) XorStr( _STR_ ).String()
+#define ASSERT(situation,msg) if(situation) throw std::runtime_error(XorStr(msg).String())
     typedef enum _SYSTEM_INFORMATION_CLASS {
         SystemProcessInformation = 0x5,
         SystemExtendedProcessInformation = 0x39,
@@ -351,13 +353,13 @@ namespace stc {
     INLINE ULONG _ReadApi(_THANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//ReadProcessMemory
         SIZE_T bytesRead = 0;
         if (m_hProcess)CallBacks::OnCallBack(CallBacks::pReadProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesRead);
-        return bytesRead;
+        return (ULONG)bytesRead;
     }
     //writeapi  
     INLINE ULONG _WriteApi(_THANDLE m_hProcess, _In_ LPVOID lpBaseAddress, _In_opt_ LPVOID lpBuffer, _In_ SIZE_T nSize) NOEXCEPT {//WriteProcessMemory
         SIZE_T bytesWritten = 0;
         if (m_hProcess)CallBacks::OnCallBack(CallBacks::pWriteProcessMemoryCallBack, m_hProcess, lpBaseAddress, lpBuffer, nSize, &bytesWritten);
-        return bytesWritten;
+        return (ULONG)bytesWritten;
     }
     INLINE NTSTATUS NtSuspendThreadApi(HANDLE ThreadHandle, PULONG PreviousSuspendCount) {
         return CallBacks::OnCallBack(CallBacks::pNtSuspendThread, ThreadHandle, PreviousSuspendCount);
@@ -621,9 +623,7 @@ namespace stc {
     template<typename T, typename U>
     INLINE std::unordered_map<T, U> readFromFile(const std::string& filename) {
         std::ifstream file(filename, std::ios::binary);
-        if (!file) {
-            throw std::runtime_error(xor_str("Unable to open file"));
-        }
+        ASSERT(!file, "Unable to open file");
         std::unordered_map<T, U> map;
         while (file) {
             T key{};
@@ -1007,9 +1007,7 @@ namespace stc {
                     GetMapName<T>().c_str()); // 映射对象的名字 map object name
                 Owend = true;
             }
-            if (!hFile) {
-                throw std::runtime_error(xor_str("CreateFileMappingA failed with error code: ") + std::to_string(GetLastError()));   //创建文件映射失败 create file mapping failed
-            }
+            ASSERT(!hFile, "CreateFileMappingA failed");
             auto p = static_cast<T*>(MapViewOfFile(hFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(T)));
             if constexpr (sizeof...(Args) > 0) {
                 if (Owend && *(uintptr_t*)p == NULL)*(uintptr_t*)p = (uintptr_t)new T(std::forward<Args>(args)...);
@@ -1244,7 +1242,7 @@ namespace stc {
                 uintptr_t start = (uintptr_t)lpMbi->AllocationBase;
                 uintptr_t end = start + lpMbi->RegionSize, Ratio = 1;
                 if (CheckMask(lpMbi->Type, MEM_IMAGE | MEM_MAPPED)) Ratio = 999;//设置较长的比例缓存项不容易被清除 set a longer ratio cache item not easy to be cleared
-                cache.AsyncAddCache(std::make_pair(start, end), *lpMbi, CacheNormalTTL * Ratio);
+                cache.AsyncAddCache(std::make_pair(start, end), *lpMbi, CacheNormalTTL * (DWORD)Ratio);
             }
             return ret;
         }
@@ -1322,13 +1320,15 @@ namespace stc {
                 if (mbi.State == MEM_COMMIT && !CheckMask(mbi.Protect, PAGE_NOACCESS | PAGE_GUARD)) {
                     std::unique_ptr<BYTE[]> buffer(new BYTE[mbi.RegionSize]);
                     _ReadApi(m_handle, mbi.BaseAddress, buffer.get(), mbi.RegionSize);
-                    auto result = findAllContinuousSequences(buffer.get(), mbi.RegionSize, inestread);
-                    for (auto& item : result) {
-                        if (item.second >= 24) {
-                            Add((void*)((uintptr_t)mbi.BaseAddress + 12), mbi.RegionSize - 12, false, mbi.Protect);
-                            bBlock = true;
+                    std::async(std::launch::async, [&] {
+                        auto result = findAllContinuousSequences(buffer.get(), mbi.RegionSize, inestread);
+                        for (auto& item : result) {
+                            if (item.second >= 24) {
+                                Add((void*)((uintptr_t)mbi.BaseAddress + 12), mbi.RegionSize - 12, false, mbi.Protect);
+                                bBlock = true;
+                            }
                         }
-                    }
+                        });
                 }
             }
             return bBlock;
@@ -1352,9 +1352,11 @@ namespace stc {
             if (iter != m_freeBlocks.end()) {
                 //保护类型发生改变
                 MEMORY_BASIC_INFORMATION mbi{};
-                VirtualQueryExApi(m_handle, iter->ptr, &mbi, sizeof(mbi));
+                VirtualQueryCacheApi(m_handle, iter->ptr, &mbi);
                 std::unique_ptr<BYTE[]> MemoryData(new BYTE[mbi.RegionSize]);
-                if (mbi.BaseAddress)_ReadApi(m_handle, mbi.BaseAddress, MemoryData.get(), mbi.RegionSize);
+                ULONG ReadSize = 0;
+                if (mbi.BaseAddress)ReadSize = _ReadApi(m_handle, mbi.BaseAddress, MemoryData.get(), mbi.RegionSize);
+                if (!ReadSize) return nullptr;
                 auto continuesdata = findAllContinuousSequences(MemoryData.get(), mbi.RegionSize, inestread);
                 if (continuesdata.size() == 0) {
                     m_freeBlocks.erase(iter);
@@ -1390,24 +1392,23 @@ namespace stc {
                 Add(ptr, size, std::get<1>(iter->second), std::get<2>(iter->second));
             }
         }
-        INLINE void* mallocex(size_t size, DWORD protect)NOEXCEPT {
-            if (size <= 0) throw std::runtime_error(xor_str("invalid remmote allcate size!"));
+        INLINE void* mallocex(size_t size, DWORD protect) {
+            ASSERT(size <= 0, "invalid remmote allcate size!");
             auto ptr = Get(size, protect);
-            if ((uintptr_t)ptr<USERADDR_MIN || (uintptr_t)ptr>USERADDR_MAX) throw std::runtime_error(xor_str("no remote memory!"));
+            ASSERT((uintptr_t)ptr<USERADDR_MIN || (uintptr_t)ptr>USERADDR_MAX, "no remote memory!");
             g_allocMap[ptr] = { size,false,protect };
             return ptr;
         }
-        INLINE void freeex(void* ptr)NOEXCEPT {
+        INLINE void freeex(void* ptr) {
             auto it = g_allocMap.find(ptr);
-            if ((uintptr_t)ptr<USERADDR_MIN && (uintptr_t)ptr>USERADDR_MAX && it != g_allocMap.end()) throw std::runtime_error(xor_str("no remote memory!"));
+            ASSERT((uintptr_t)ptr<USERADDR_MIN && (uintptr_t)ptr>USERADDR_MAX && it != g_allocMap.end(), "no remote memory!");
             if (it == g_allocMap.end()) return;
             Free(ptr, std::get<0>(it->second));
             g_allocMap.erase(it);
         }
     };
     INLINE void* mallocex(HANDLE hProcess, size_t size, DWORD protect) {
-        void* ptr = FreeBlockList::GetInstance(hProcess).mallocex(size, protect);//调用单例模式的函数 call singleton function
-        return ptr;
+        return FreeBlockList::GetInstance(hProcess).mallocex(size, protect);//调用单例模式的函数 call singleton function
     }
     INLINE void freeex(HANDLE hProcess, void* ptr) {
         FreeBlockList::GetInstance(hProcess).freeex(ptr);   //调用单例模式的函数 call singleton function
@@ -1455,8 +1456,7 @@ namespace stc {
         INLINE uintptr_t _AllocMemApi(SIZE_T dwSize) NOEXCEPT {//远程分配内存 remote allocate memory
             uintptr_t ptr = NULL;
             ptr = (uintptr_t)mallocex((HANDLE)m_hProcess, dwSize, protect);
-            SpaceSize = dwSize;
-
+            SpaceSize = (int)dwSize;
             return ptr;
         }
         INLINE bool _FreeMemApi(LPVOID lpAddress) NOEXCEPT {//远程释放内存 remote free memory
@@ -1564,6 +1564,7 @@ namespace stc {
         char eventname[MAX_PATH];
         char funcname[4][MAX_PATH];
         LPVOID pFunc[2];
+        ThreadDataBase() = default;
     };
     template<class Fn, class T>
     struct ThreadData :public ThreadDataBase<Fn, T> {
@@ -1598,7 +1599,6 @@ namespace stc {
             auto pGetProAddress = (PGETPROCADDRESS)threadData->pFunc[1];
             //加载OpenEventA
             auto ntdll = pLoadLibrary(threadData->funcname[0]);
-            HANDLE hEventHandle = INVALID_HANDLE_VALUE;
             auto pOpenEventA = (POPENEVENTA)pGetProAddress(ntdll, threadData->funcname[1]);
             //打开事件
             auto hEventHandle = pOpenEventA(EVENT_ALL_ACCESS, FALSE, threadData->eventname);
@@ -1888,6 +1888,7 @@ namespace stc {
         LPVOID OriginAddr;
         EnumRunningMode m_RunningMode;
     };
+
     class Process :public SingleTon<Process> {//Singleton   单例
         std::string ProcessName;
         HANDLE m_hProcess;//既可以存放进程的句柄又可以存放进程的PID
@@ -2071,13 +2072,9 @@ namespace stc {
                         _threadEntry.tpDeltaPri = threadInfo->Priority;
                         _threadEntry.dwFlags = 0;
                         auto RunningTime = threadInfo->KernelTime.QuadPart + threadInfo->UserTime.QuadPart;
-                        if (RunningTime <= CacheNormalTTL * 2) continue;
+                        if (RunningTime <= (CacheNormalTTL * 2000)) continue;
                         if (!choosethread.th32ThreadID)choosethread = _threadEntry;
                         Thread thread(choosethread);
-                        if (!thread) {
-                            choosethread = _threadEntry;
-                            continue;
-                        }
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
@@ -2189,8 +2186,30 @@ namespace stc {
             ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
             maptoorigin.clear();//clear map  清除map
             if constexpr (!std::is_same_v<RetType, void>)return threadData.retdata;//return value    返回值
+            SetLastError(0);
         }
     };
+    template<typename F>
+    struct replace_r {
+        using type = F;
+    };
+    template<class R, class ...Args>
+    struct replace_r<R(Args...)> {
+        using type = void(Args...);
+    };
+    template<class T>
+    struct VoidType {
+        using type = replace_r<std::remove_pointer_t<T>>::type;
+    };
+    template<class T>
+    using VoidType_t = VoidType<T>::type;
+    template<class R>
+    auto make_void(R pfun) {
+        // 返回一个lambda，该lambda调用原函数但转换为void返回类型
+        using functype = decltype(pfun);
+        void* ptr = reinterpret_cast<void*>(pfun);
+        return reinterpret_cast<VoidType_t<functype>*>(ptr);
+    }
     void startProcessIfNotFound(const char* exeName) {
         auto findprocess = [&](const char* processName, THANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0))->bool {
             PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) , };
