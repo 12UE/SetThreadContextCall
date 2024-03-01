@@ -2064,6 +2064,10 @@ namespace stc {
                         if (RunningTime <= (CacheNormalTTL * 2000)) continue;
                         if (!choosethread.th32ThreadID)choosethread = _threadEntry;
                         Thread thread(choosethread);
+                        if (!thread) {
+                            memset(&choosethread, 0, sizeof(choosethread));
+                            continue;
+                        }
                         auto status = pre(thread);
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
