@@ -11,7 +11,7 @@ int main() {
     int i = 0;
     while (true)
     {
-        auto ret = Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "OK", "cap", MB_OK).get();
+        auto ret = Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "OK", "cap", MB_OK);
         std::cout << "return value:" << ret << "times:" << std::dec << ++i << std::endl;
     }
 

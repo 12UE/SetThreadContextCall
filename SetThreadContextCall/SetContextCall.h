@@ -2116,7 +2116,7 @@ namespace stc {
         template<class _Fn, class ...Arg>
         INLINE AUTOTYPE SetContextCallImpl(_Fn&& _Fx, Arg ...args) NOEXCEPT {
             using RetType = decltype(_Fx(args...));//return type is common type or not 返回值类型是普通类型还是void
-            if (!m_bAttached) return std::future<RetType>();
+            if (!m_bAttached) return RetType();
             auto threadData = Create<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
             strcpy_s(threadData.eventname, xor_str("SetContextCallImpl"));//event name
             strcpy_s(threadData.funcname[0], xor_str("kernel32.dll"));//kernel32.dll
@@ -2131,16 +2131,16 @@ namespace stc {
             EnumThread([&](Thread& thread)->EnumStatus {
                 thread.Suspend();//suspend thread  暂停线程
                 auto ctx = thread.GetContext();//获取上下文 get context
-                if (ctx.XIP) {
+                if (ctx.XIP) {//一定要有eip  must have eip
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess, 1, PAGE_EXECUTE_READ);
                     if (lpShell && myevent) {
-                        m_vecAllocMem.emplace_back(lpShell);//
+                        m_vecAllocMem.emplace_back(lpShell);//记录分配的内存  record allocated memory
                         DATA_CONTEXT dataContext{};
                         memcpy_s(dataContext.ShellCode, sizeof(ContextInjectShell), ContextInjectShell, sizeof(ContextInjectShell));
                         if constexpr (sizeof...(Arg) > 0)preprocess(std::forward<Arg&>(args)...);//process parameter  处理参数
                         threadData.fn = _Fx;
                         if constexpr (sizeof...(Arg) > 0)threadData.params = std::tuple(std::forward<Arg>(args)...);//tuple parameters   tuple参数
-                        auto pFunction = CreateFunc<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
+                        auto pFunction = CreateFunc<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();//通过模板生成函数  create function through template
                         //get function address  获取函数地址
                         auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
                         auto lpFunction = make_Shared<BYTE>(m_hProcess, length, PAGE_EXECUTE_READ);//allocate memory for function  分配内存
@@ -2167,19 +2167,17 @@ namespace stc {
                 }
                 return EnumStatus::Continue;
                 });
-            return std::async(std::launch::async, [&]()->RetType {
-                if constexpr (!std::is_same_v<RetType, void>) {
-                    WaitResult = myevent.Wait();//等待事件被触发  wait for event triggered 
-                    if (parameter && WaitResult == WAIT_OBJECT_0)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
-                }
-                if (maptoorigin.size() > 0 && WaitResult == WAIT_OBJECT_0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
-                ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
-                maptoorigin.clear();//clear map  清除map
-                SetLastError(0);
-                if constexpr (!std::is_same_v<RetType, void>) {
-                    return threadData.retdata;//返回值保存到retdata return value save to retdata
-                }
-                });
+            if constexpr (!std::is_same_v<RetType, void>) {
+                WaitResult = myevent.Wait();//等待事件被触发  wait for event triggered 
+                if (parameter && WaitResult == WAIT_OBJECT_0)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
+            }
+            if (maptoorigin.size() > 0 && WaitResult == WAIT_OBJECT_0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
+            ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
+            maptoorigin.clear();//clear map  清除map
+            SetLastError(ERROR_SUCCESS);//设置错误代码为成功  set error code to success
+            if constexpr (!std::is_same_v<RetType, void>) {
+                return threadData.retdata;//返回值保存到retdata return value save to retdata
+            }
         }
     };
     template<typename F>
