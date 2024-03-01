@@ -1987,18 +1987,7 @@ namespace stc {
         template<typename ...Arg>
         INLINE AUTOTYPE SetContextCall(auto&& _Fx, Arg&& ...args) NOEXCEPT {
             static_assert(!is_callable<decltype(_Fx)>::value, "uncallable!");//函数必须可以调用 function must be callable
-            //获得函数体的返回值
-            using RetType = decltype(_Fx(args...));
-            if constexpr (!std::is_same_v<RetType, void>) {
-                auto retdata = SetContextCallImpl(_Fx, std::forward<Arg>(args)...);//返回值保存到retdata return value save to retdata
-                std::promise<RetType> promise{};//承诺对象
-                std::future<RetType> fut = promise.get_future();
-                promise.set_value(retdata);//设置承诺值 set promise value
-                return fut;
-            }
-            else {
-                SetContextCallImpl(_Fx, std::forward<Arg>(args)...);
-            }
+            return SetContextCallImpl(_Fx, std::forward<Arg>(args)...);
         }
         template<class T, class ...Arg>
         using Functype = T(__stdcall*)(Arg...);
@@ -2127,7 +2116,7 @@ namespace stc {
         template<class _Fn, class ...Arg>
         INLINE AUTOTYPE SetContextCallImpl(_Fn&& _Fx, Arg ...args) NOEXCEPT {
             using RetType = decltype(_Fx(args...));//return type is common type or not 返回值类型是普通类型还是void
-            if (!m_bAttached) return RetType();
+            if (!m_bAttached) return std::future<RetType>();
             auto threadData = Create<std::decay_t<_Fn>, RetType, std::decay_t<Arg>...>();
             strcpy_s(threadData.eventname, xor_str("SetContextCallImpl"));//event name
             strcpy_s(threadData.funcname[0], xor_str("kernel32.dll"));//kernel32.dll
@@ -2137,12 +2126,13 @@ namespace stc {
             threadData.pFunc[0] = (LPVOID)LoadLibraryA;
             threadData.pFunc[1] = (LPVOID)GetProcAddress;
             auto WaitResult = WAIT_TIMEOUT;//默认等待超时  default wait timeout
+            LPVOID parameter = 0;
+            Event myevent(threadData.eventname);
             EnumThread([&](Thread& thread)->EnumStatus {
                 thread.Suspend();//suspend thread  暂停线程
                 auto ctx = thread.GetContext();//获取上下文 get context
                 if (ctx.XIP) {
                     auto lpShell = make_Shared<DATA_CONTEXT>(m_hProcess, 1, PAGE_EXECUTE_READ);
-                    Event myevent(threadData.eventname);
                     if (lpShell && myevent) {
                         m_vecAllocMem.emplace_back(lpShell);//
                         DATA_CONTEXT dataContext{};
@@ -2159,7 +2149,6 @@ namespace stc {
                         WriteApi(lpFunction.get<LPVOID>(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
                         dataContext.pFunction = lpFunction.raw<LPVOID>();//set function address  设置函数地址
                         dataContext.OriginalEip = (LPVOID)ctx.XIP;//set original eip    设置原始eip
-                        LPVOID parameter = 0;
                         if constexpr (sizeof...(Arg) > 0) {
                             auto lpParameter = make_Shared<decltype(threadData)>(m_hProcess, 1, PAGE_READWRITE);//allocate memory for parameter    分配内存
                             if (lpParameter) {
@@ -2173,20 +2162,24 @@ namespace stc {
                         WriteApi(lpShell.get<LPVOID>(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();//resume thread   恢复线程
-                        if constexpr (!std::is_same_v<RetType, void>) {
-                            WaitResult = myevent.Wait();//等待事件被触发  wait for event triggered 
-                            if (parameter && WaitResult == WAIT_OBJECT_0)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
-                        }
                         return EnumStatus::Break;
                     }
                 }
                 return EnumStatus::Continue;
                 });
-            if (maptoorigin.size() > 0 && WaitResult == WAIT_OBJECT_0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
-            ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
-            maptoorigin.clear();//clear map  清除map
-            if constexpr (!std::is_same_v<RetType, void>)return threadData.retdata;//return value    返回值
-            SetLastError(0);
+            return std::async(std::launch::async, [&]()->RetType {
+                if constexpr (!std::is_same_v<RetType, void>) {
+                    WaitResult = myevent.Wait();//等待事件被触发  wait for event triggered 
+                    if (parameter && WaitResult == WAIT_OBJECT_0)ReadApi(parameter, &threadData, sizeof(threadData));//readparameter for return value  读取参数以返回值
+                }
+                if (maptoorigin.size() > 0 && WaitResult == WAIT_OBJECT_0) if constexpr (sizeof...(Arg) > 0)postprocess(args...);//post process parameter   后处理参数
+                ClearMemory();//清除内存 clear memory 避免内存泄漏 avoid memory leak
+                maptoorigin.clear();//clear map  清除map
+                SetLastError(0);
+                if constexpr (!std::is_same_v<RetType, void>) {
+                    return threadData.retdata;//返回值保存到retdata return value save to retdata
+                }
+                });
         }
     };
     template<typename F>
