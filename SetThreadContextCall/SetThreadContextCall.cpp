@@ -9,13 +9,11 @@ int main() {
     startProcessIfNotFound("notepad.exe");
     Process.Attach("notepad.exe");//attach process
     int i = 0;
-    while (true)
-    {
+    while (1) {
         auto ret = Process.SetContextCall(MessageBoxA, Process::TONULL<HWND>(), "OK", "cap", MB_OK);
         std::cout << "return value:" << ret << "times:" << std::dec << ++i << std::endl;
     }
-
-    std::cout << "done";
-    getchar();//程序在这里暂停
+    std::cout << "excute done" << std::endl;
+    getchar();
     return 0;
 }

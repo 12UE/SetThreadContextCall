@@ -43,7 +43,13 @@ namespace stc {
 #define XORSTR_NIBBLE( _VALUE, _IDX ) ( ( _VALUE >> ( __min( _IDX, ( XORSTR_TYPE_SIZEOF( _VALUE ) * 2 ) - 1 ) * 4 ) ) & 0xF )
 #define XORSTR_MAKE_INTEGER_SEQUENCE( _LEN_ ) __make_integer_seq< XORSTR_INT_SEQ, SIZE_T, _LEN_ >( )
 #define XORSTR_INTEGER_SEQUENCE( _INDICES_ ) XORSTR_INT_SEQ< SIZE_T, _INDICES_... >
-
+    void EnsureFocusOnMyWindow() {
+        HWND myWindowHandle = GetConsoleWindow(); // 获取控制台窗口句柄
+        HWND foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow != myWindowHandle) {
+            SetForegroundWindow(myWindowHandle); // 尝试将焦点设置到控制台窗口
+        }
+    }
     template< typename _Ty, _Ty... Types >
     struct XORSTR_INT_SEQ {};
     XORSTR_CONST_NOINLINE INT XORSTR_ATOI8(IN CHAR Character) noexcept { return (Character >= '0' && Character <= '9') ? (Character - '0') : NULL; }
@@ -74,7 +80,7 @@ namespace stc {
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< WCHAR, _STR_LEN_ > XorStr(IN WCHAR CONST(&String)[_STR_LEN_]) { return _XORSTR_< WCHAR, _STR_LEN_ >(String); }
     template< SIZE_T _STR_LEN_ >XORSTR_CONST_INLINE _XORSTR_< char32_t, _STR_LEN_ > XorStr(IN char32_t CONST(&String)[_STR_LEN_]) { return _XORSTR_< char32_t, _STR_LEN_ >(String); }
 #define xor_str( _STR_ ) XorStr( _STR_ ).String()
-#define ASSERT(situation,msg) if(situation) throw std::runtime_error(XorStr(msg).String())
+#define ASSERT(situation,msg) while(situation) throw std::runtime_error(XorStr(msg).String())
     typedef enum _SYSTEM_INFORMATION_CLASS {
         SystemProcessInformation = 0x5,
         SystemExtendedProcessInformation = 0x39,
@@ -324,7 +330,7 @@ namespace stc {
                 return Traits::InvalidHandle();
             }
         }
-        virtual INLINE void Release() {
+        INLINE void Release() {
             //仅仅refcount>=0的时候
             if (refcount > 0) refcount--;
             if (refcount == 0) {
@@ -367,11 +373,18 @@ namespace stc {
     class Event :public THANDLE {
     public:
         Event() = default;//默认构造
-        Event(const char* EventName, bool bManualReset = false) {
-            m_handle = CreateEventA(NULL, bManualReset, FALSE, EventName);
+        Event(const char* EventName, bool bManualReset) {
+            int len = strlen(EventName);
+            if (len > 0 && len < MAX_PATH) {
+                m_handle = CreateEventA(NULL, bManualReset, FALSE, EventName);
+            }
         }
-        void _OpenEvent(const char* EventName) {
-            m_handle = OpenEventA(EVENT_ALL_ACCESS, FALSE, EventName);
+        Event(const char* EventName) {
+            int len = strlen(EventName);
+            if (len > 0 && len < MAX_PATH) {
+                m_handle = OpenEventA(EVENT_ALL_ACCESS, FALSE, EventName);
+                detach();
+            }
         }
         //set
         INLINE void Set()NOEXCEPT {
@@ -744,8 +757,8 @@ namespace stc {
                     });
             }
             std::vector<std::string> libPath(libPathSet.cbegin(), libPathSet.cend());
-            libPath.erase(std::remove_if(libPath.begin(), libPath.end(), [](std::string& path) {return path.find(xor_str(".dll")) == std::string::npos; }), libPath.end());
-            std::sort(libPath.begin(), libPath.end(), [](std::string& path1, std::string& path2) {return path1.length() < path2.length(); });
+            libPath.erase(std::remove_if(libPath.begin(), libPath.end(), [](const std::string& path) {return path.find(xor_str(".dll")) == std::string::npos; }), libPath.end());
+            std::sort(libPath.begin(), libPath.end(), [](const std::string& path1, const std::string& path2) {return path1.length() < path2.length(); });
 #pragma omp parallel for schedule(dynamic,1)
             for (int i = 0; i < (int)libPath.size(); i++) {
                 if (IsFileExistA(libPath[i].c_str())) {
@@ -773,6 +786,7 @@ namespace stc {
                 }
             }
         }
+
         INLINE  std::string GetExportDllName(const std::string& ExportFunctionName) {
             auto iter = data.find(ExportFunctionName);
             return (iter != data.end()) ? iter->second : "";
@@ -844,7 +858,7 @@ namespace stc {
                             break;
                         }
                         pData = (Win32::LDRT*)pData->InLoadOrderLinks.Blink;
-                    } while (pData != pFirst && pData->DllBase && !funcPtr);
+                    } while (pData != pFirst && pData->DllBase);
                 }
                 if (!moduleHandle) moduleHandle = GetModuleHandleA(_moduleName);
                 if (!moduleHandle) {
@@ -973,11 +987,12 @@ namespace stc {
         bool isOwend = false;
     public:
         HANDLE hFile;
-        Instance() {
-            objaddr = NULL;
-            mapaddr = NULL;
-            isOwend = false;
-            hFile = INVALID_HANDLE_VALUE;
+        Instance()
+            : objaddr(NULL), // 直接在初始化列表中初始化
+            mapaddr(NULL), // 直接在初始化列表中初始化
+            hFile(INVALID_HANDLE_VALUE) // 直接在初始化列表中初始化
+        {
+            // 由于所有成员变量都在初始化列表中初始化了，构造函数体现在可以为空
         }
         Instance(uintptr_t objaddr, LPVOID _mapaddr, bool isOwn, HANDLE hFile) :objaddr(objaddr), isOwend(isOwn), hFile(hFile), mapaddr(_mapaddr) {
         }
@@ -1107,13 +1122,18 @@ namespace stc {
         ss << t;
         OutputDebugStringA(ss.str().c_str());
     }
-    struct FreeBlock {//空闲块 free block
-        FreeBlock() = default;
-        FreeBlock(void* _ptr, size_t _size, bool allocate, DWORD _protect) :size(_size), ptr(_ptr), bAllocate(allocate), protect(_protect) {}
-        size_t size;//大小 size
-        void* ptr;  //指针 pointer
-        DWORD protect;
-        bool bAllocate;
+    struct FreeBlock {
+        // 显式默认构造函数，可以在这里给成员变量设定默认值
+        FreeBlock() : size(0), ptr(nullptr), protect(0), bAllocate(false) {}
+
+        // 完全初始化所有成员变量的构造函数
+        FreeBlock(void* _ptr, size_t _size, bool allocate, DWORD _protect)
+            : size(_size), ptr(_ptr), bAllocate(allocate), protect(_protect) {}
+
+        size_t size;  // 大小
+        void* ptr;    // 指针
+        DWORD protect; // 保护标志
+        bool bAllocate; // 是否已分配
     };
     INLINE BOOL VirtualFreeExApi(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) NOEXCEPT {//远程释放内存 remote free 
         return CallBacks::pVirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);
@@ -1224,7 +1244,7 @@ namespace stc {
     constexpr auto USERADDR_MAX = 0xBFFE'FFFF;
 #endif
     static SimpleRangeCache<uintptr_t, MEMORY_BASIC_INFORMATION> cache;
-    std::vector<BYTE> inestread{ 0x0,NOP,INT3 };
+
     INLINE SIZE_T VirtualQueryExApi(HANDLE hProcess, LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength)NOEXCEPT {//这里的hProcess可以是进程的ID
         return CallBacks::OnCallBack(CallBacks::pVirtualQueryEx, hProcess, lpAddress, lpBuffer, dwLength);
     }
@@ -1294,7 +1314,7 @@ namespace stc {
     public:
         FreeBlockList(HANDLE hprocess) : m_head(nullptr) {
             m_handle = hprocess;
-            FindCodecavesToFreeList();
+            FindCodecavesToFreeList();//这里我们不需要返回值,因为我们只是为了初始化空闲块链表,所以我们不需要返回值 here we don't need return value,because we just want to initialize free block list,so we don't need return value
         }
         ~FreeBlockList() {//当析构时释放所有空闲块 free all free block when destruct
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -1321,8 +1341,8 @@ namespace stc {
                     std::unique_ptr<BYTE[]> buffer(new BYTE[mbi.RegionSize]);
                     _ReadApi(m_handle, mbi.BaseAddress, buffer.get(), mbi.RegionSize);
                     std::async(std::launch::async, [&] {
-                        auto result = findAllContinuousSequences(buffer.get(), mbi.RegionSize, inestread);
-                        for (auto& item : result) {
+                        auto result = findAllContinuousSequences(buffer.get(), mbi.RegionSize, std::vector<BYTE>{ 0x0, NOP, INT3 });
+                        for (const auto& item : result) {
                             if (item.second >= 24) {
                                 Add((void*)((uintptr_t)mbi.BaseAddress + 12), mbi.RegionSize - 12, false, mbi.Protect);
                                 bBlock = true;
@@ -1356,14 +1376,17 @@ namespace stc {
                 std::unique_ptr<BYTE[]> MemoryData(new BYTE[mbi.RegionSize]);
                 ULONG ReadSize = 0;
                 if (mbi.BaseAddress)ReadSize = _ReadApi(m_handle, mbi.BaseAddress, MemoryData.get(), mbi.RegionSize);
-                if (!ReadSize) return nullptr;
-                auto continuesdata = findAllContinuousSequences(MemoryData.get(), mbi.RegionSize, inestread);
-                if (continuesdata.size() == 0) {
-                    m_freeBlocks.erase(iter);
-                    return Get(size, protect);
+                if (ReadSize) {
+                    auto continuesdata = findAllContinuousSequences(MemoryData.get(), mbi.RegionSize, std::vector<BYTE>{ 0x0, NOP, INT3 });
+                    if (continuesdata.size() != 0) {
+                        if ((uintptr_t)iter->ptr < USERADDR_MIN || (uintptr_t)iter->ptr >= USERADDR_MAX || !CheckMask(iter->protect, mbi.Protect)) {
+                            iter->protect = mbi.Protect;
+                            return Get(size, protect);
+                        }
+                    }
                 }
-                if ((uintptr_t)iter->ptr < USERADDR_MIN || (uintptr_t)iter->ptr >= USERADDR_MAX || !CheckMask(iter->protect, mbi.Protect)) {
-                    iter->protect = mbi.Protect;
+                else {
+                    m_freeBlocks.erase(iter);
                     return Get(size, protect);
                 }
                 //空闲链表当中有    find in free block list
@@ -1401,7 +1424,7 @@ namespace stc {
         }
         INLINE void freeex(void* ptr) {
             auto it = g_allocMap.find(ptr);
-            ASSERT((uintptr_t)ptr<USERADDR_MIN && (uintptr_t)ptr>USERADDR_MAX && it != g_allocMap.end(), "no remote memory!");
+            ASSERT((uintptr_t)ptr<USERADDR_MIN || (uintptr_t)ptr>USERADDR_MAX && it != g_allocMap.end(), "no remote memory!");
             if (it == g_allocMap.end()) return;
             Free(ptr, std::get<0>(it->second));
             g_allocMap.erase(it);
@@ -1427,8 +1450,6 @@ namespace stc {
             MEMORY_BASIC_INFORMATION mbi{};
             if (VirtualQueryCacheApi(hProcess, (LPVOID)Addr, &mbi)) {
                 if (mbi.State == MEM_COMMIT) {
-                    std::mutex validaddressmtx;
-                    std::unique_lock<std::mutex> lock(validaddressmtx, std::defer_lock);
                     if (CheckMask(mbi.Protect, mask)) {
                         auto RestSize = mbi.RegionSize - (Addr - (uintptr_t)mbi.BaseAddress);
                         if (RestSize > 0) return true;
@@ -1464,10 +1485,12 @@ namespace stc {
             return true;
         }
     public:
-        INLINE Shared_Ptr(void* Addr, HANDLE hProc, DWORD _protect) : m_hProcess(hProc) {
-            BaseAddress = Addr;
-
-            AddRef();
+        INLINE Shared_Ptr(void* Addr, HANDLE hProc, DWORD _protect)
+            : BaseAddress(Addr), // 直接在初始化列表中初始化
+            m_hProcess(hProc), // 已经在初始化列表中
+            protect(_protect) // 如果_protect是成员变量，也应该在这里初始化
+        {
+            AddRef(); // 保留其他逻辑不变
         }
         template<class T>
         INLINE Shared_Ptr() NOEXCEPT {
@@ -1494,13 +1517,14 @@ namespace stc {
             }
             return *this;
         }
-        INLINE Shared_Ptr(Shared_Ptr&& other) NOEXCEPT {//move construct  移动构造
-            BaseAddress = other.BaseAddress;
-            refCount.store(other.refCount.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            SpaceSize = other.SpaceSize;
-            other.BaseAddress = nullptr;//这样原来的指针就不会释放内存了 so the original pointer will not release memory
-            other.refCount = 0;
-            other.SpaceSize = 0;
+        INLINE Shared_Ptr(Shared_Ptr&& other) NOEXCEPT
+            : BaseAddress(other.BaseAddress), // 直接在初始化列表中使用其他对象的值进行初始化
+            refCount(other.refCount.load(std::memory_order_relaxed)), // 使用atomic的load方法获取值
+            SpaceSize(other.SpaceSize) // 直接使用其他对象的值初始化
+        {
+            other.BaseAddress = nullptr; // 清除原对象的指针，避免释放内存
+            other.refCount.store(0, std::memory_order_relaxed); // 将原对象的引用计数设置为0
+            other.SpaceSize = 0; // 将原对象的SpaceSize设置为0
         }
         template<class T>
         INLINE T get() NOEXCEPT {//获得指针但是增加引用计数 get pointer but increase reference count
@@ -1645,12 +1669,12 @@ namespace stc {
     }*PINJECT_DATA_CONTEXT;
 #if defined _WIN64
     BYTE ContextInjectShell[] = {			//x64.asm 书中并没有给出x64的代码,这里是我自己写的  the book does not give the code of x64,here is my own code
-        0x50,								//push	rax
-        0x53,								//push	rbx
+        0x50,								//push	rax                         //保存rax寄存器的值到栈上，保护现场 save rax register value to stack,protect scene
+        0x53,								//push	rbx                         //保存rbx寄存器的值到栈上，保护现场 save rbx register value to stack,protect scene
         0x9c,								//pushfq							//保存flag寄存器    save flag register
-        0xe8,0x00,0x00,0x00,0x00,			//call	next
-        0x5b,								//pop	rbx
-        0x48,0x83,0xeb,0x08,				//sub	rbx,08
+        0xe8,0x00,0x00,0x00,0x00,			//call	next                        //自定位    self location
+        0x5b,								//pop	rbx                         //从栈中弹出值到rbx寄存器中，这里得到的是call next指令之后的指令地址，实现了自定位 pop value from stack to rbx register,here get the address of the instruction after call next,realize self location
+        0x48,0x83,0xeb,0x08,				//sub	rbx,08                      //为即将调用的函数预留空间，通过减小栈指针rsp来分配栈空间   reserve space for the function to be called,allocate stack space by reducing the stack pointer rsp
         0x51,								//push	rcx	
         0x48,0x83,0xEC,0x28,				//sub	rsp,0x28					//为call 的参数分配空间 allocate space for call parameter
         0x48,0x8b,0x4b,0x38,				//mov	rcx,[rbx+0x38]				//lparam 路径地址   lparam address
@@ -1658,12 +1682,11 @@ namespace stc {
         0x48,0x83,0xc4,0x28,				//add	rsp,0x28					//撤销临时空间  undo temporary space
         0x59,								//pop	rcx
         0x48,0x8b,0x43,0x40,				//mov	rax,[rbx+0x40]				//取rip到rax    get rip to rax
-        0x48,0x87,0x44,0x24,0x24,			//xchg	[rsp+24],rax				
+        0x48,0x87,0x44,0x24,0x24,			//xchg	[rsp+24],rax				//交换栈上rsp+24地址处的值和rax寄存器的值，这用于调整返回值或进行特定的数据操作   exchange the value at the address of rsp+24 on the stack with the value of the rax register, which is used to adjust the return value or perform specific data operations
         0x9d,								//popfq								//还原标志寄存器    restore flag register
         0x5b,								//pop	rbx
         0x58,								//pop	rax
-        0xc3,								//retn
-        0xcc
+        0xc3,								//retn                              //返回    return
     };
 #else
     BYTE ContextInjectShell[] = {	//x86.asm 书中的代码  the code in the book
@@ -1680,7 +1703,6 @@ namespace stc {
         0x9d,								//popfd
         0x61,								//popad
         0xc3,								//retn
-        0xcc
     };
 #endif
     class Thread :public THANDLE {//把线程当做对象来处理  process thread as object
@@ -1721,7 +1743,10 @@ namespace stc {
             return *this;
         }
         ~Thread() NOEXCEPT {
-
+            int nSuspend = m_nSuspendCount;
+            for (int i = 0; i < nSuspend; i++) {
+                Resume();
+            }
         }
         INLINE HANDLE GetHandle() NOEXCEPT { return m_handle; }//获取线程句柄  get thread handle
         INLINE bool IsRunning() NOEXCEPT {
@@ -1796,15 +1821,16 @@ namespace stc {
         ThreadSafeVector(const ThreadSafeVector& other) {
             m_vector = other.m_vector;
         }
+        ThreadSafeVector(ThreadSafeVector&& other) noexcept
+            : m_vector(std::move(other.m_vector)) {
+            // 构造函数体中不需要显式地对m_vector进行赋值
+        }
         INLINE ThreadSafeVector(size_t size) {
             m_vector.resize(size);
         }
         INLINE ThreadSafeVector& operator=(const ThreadSafeVector& other) NOEXCEPT {
             m_vector = other.m_vector;
             return *this;
-        }
-        INLINE ThreadSafeVector(ThreadSafeVector&& other) NOEXCEPT {
-            m_vector = std::move(other.m_vector);
         }
         INLINE ThreadSafeVector& operator=(ThreadSafeVector&& other) NOEXCEPT {
             m_vector = std::move(other.m_vector);
@@ -1924,6 +1950,9 @@ namespace stc {
             auto nlen = 0;
             if (arg) nlen = (int)strlen(arg) + 1;
             auto p = make_Shared<char>(m_hProcess, nlen * sizeof(char), PAGE_READWRITE);
+            if (!p)p = make_Shared<char>(m_hProcess, nlen * sizeof(char), PAGE_READONLY);
+            if (!p)p = make_Shared<char>(m_hProcess, nlen * sizeof(char), PAGE_EXECUTE_READ);
+            std::cout << "p:" << p.raw<LPVOID>() << std::endl;
             if (p) {
                 m_vecAllocMem.push_back(p);
                 WriteApi(p.get<LPVOID>(), (LPVOID)arg, nlen * sizeof(char));
@@ -1960,7 +1989,7 @@ namespace stc {
             CloseHandle(m_hProcess);
 #endif
         }
-        INLINE void Attach(const char* _szProcessName) NOEXCEPT {//attach process   附加进程
+        INLINE void Attach(const char* _szProcessName) {//attach process   附加进程
             //get process id    获取进程id
             DWORD pid = 0;
             EnumProcess([&](const SYSTEM_PROCESS_INFORMATION& process_info)->EnumStatus {
@@ -2050,7 +2079,8 @@ namespace stc {
             if (!NT_SUCCESS(ZwQuerySystemInformationEx(SystemProcessInformation, buffer))) return;
             auto current = (PSYSTEM_PROCESS_INFORMATION)buffer.get();
             static THREADENTRY32 choosethread{};
-            while (TRUE) {
+            EnumStatus status = EnumStatus::Continue;
+            while (status == EnumStatus::Continue) {//当status为Continue时继续枚举  continue enum when status is continue
                 for (ULONG i = 0; i < current->NumberOfThreads; i++) {
                     auto threadInfo = (PSYSTEM_THREAD_INFORMATION)((ULONG_PTR)current + FIELD_OFFSET(SYSTEM_PROCESS_INFORMATION, Threads) + i * sizeof(SYSTEM_THREAD_INFORMATION));
                     if (HandleToULong(current->UniqueProcessId) == m_pid) {
@@ -2061,14 +2091,10 @@ namespace stc {
                         _threadEntry.tpDeltaPri = threadInfo->Priority;
                         _threadEntry.dwFlags = 0;
                         auto RunningTime = threadInfo->KernelTime.QuadPart + threadInfo->UserTime.QuadPart;
-                        if (RunningTime <= (CacheNormalTTL * 2000)) continue;
-                        if (!choosethread.th32ThreadID)choosethread = _threadEntry;
+                        if (RunningTime <= (CacheNormalTTL * 2000)) continue;//如果运行时间小于2000毫秒则跳过  if running time is less than 2000ms then skip
+                        if (!choosethread.th32ThreadID)choosethread = _threadEntry;//存储线程信息  save thread info
                         Thread thread(choosethread);
-                        if (!thread) {
-                            memset(&choosethread, 0, sizeof(choosethread));
-                            continue;
-                        }
-                        auto status = pre(thread);
+                        status = pre(thread);//执行回调函数使得status改变  execute callback function to change status
                         if (status == EnumStatus::Break)break;
                         else if (status == EnumStatus::Continue) continue;
                     }
@@ -2131,7 +2157,7 @@ namespace stc {
             threadData.pFunc[1] = (LPVOID)GetProcAddress;
             auto WaitResult = WAIT_TIMEOUT;//默认等待超时  default wait timeout
             LPVOID parameter = 0;
-            Event myevent(threadData.eventname);
+            Event myevent(threadData.eventname, false);
             EnumThread([&](Thread& thread)->EnumStatus {
                 thread.Suspend();//suspend thread  暂停线程
                 auto ctx = thread.GetContext();//获取上下文 get context
@@ -2148,7 +2174,6 @@ namespace stc {
                         //get function address  获取函数地址
                         auto length = GetFunctionSize((BYTE*)pFunction);//get function length    获取函数长度
                         auto lpFunction = make_Shared<BYTE>(m_hProcess, length, PAGE_EXECUTE_READ);//allocate memory for function  分配内存
-                        if (!lpFunction)return EnumStatus::Continue;
                         m_vecAllocMem.emplace_back(lpFunction);//push back to vector for free memory    push back到vector中以释放内存
                         WriteApi(lpFunction.get<LPVOID>(), (LPVOID)pFunction, length);//write function to memory   写入函数到存
                         dataContext.pFunction = lpFunction.raw<LPVOID>();//set function address  设置函数地址
@@ -2166,6 +2191,7 @@ namespace stc {
                         WriteApi(lpShell.get<LPVOID>(), &dataContext, sizeof(DATA_CONTEXT));//write datacontext    写datacontext
                         thread.SetContext(ctx);//set context    设置上下文
                         thread.Resume();//resume thread   恢复线程
+                        EnsureFocusOnMyWindow();
                         return EnumStatus::Break;
                     }
                 }
@@ -2189,7 +2215,7 @@ namespace stc {
         using type = F;
     };
     template<class R, class ...Args>
-    struct replace_r<R(Args...)> {
+    struct replace_r<R(Args...)> {//特化 specialization
         using type = void(Args...);
     };
     template<class T>
@@ -2199,7 +2225,7 @@ namespace stc {
     template<class T>
     using VoidType_t = VoidType<T>::type;
     template<class R>
-    auto make_void(R pfun) {
+    auto make_void(R pfun) {//除了返回值类型是void外 其他参数的类型都不变  except return value type is void,other parameter type is not change
         // 返回一个lambda，该lambda调用原函数但转换为void返回类型
         using functype = decltype(pfun);
         void* ptr = reinterpret_cast<void*>(pfun);
@@ -2210,11 +2236,11 @@ namespace stc {
             PROCESSENTRY32W pe32{ sizeof(PROCESSENTRY32W) , };
             if (!hProcessSnap)return false;
             auto found = false;
-            for (auto bRet = Process32FirstW(hProcessSnap.get(), &pe32); bRet; bRet = Process32NextW(hProcessSnap.get(), &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
+            for (auto bRet = Process32FirstW(hProcessSnap, &pe32); bRet; bRet = Process32NextW(hProcessSnap, &pe32))if (found = _ucsicmp(pe32.szExeFile, processName))break;
             return found;
             };
         if (!findprocess(exeName)) {
-            while (true) {
+            while (true) {//等待进程启动 wait for process start
                 if (!findprocess(exeName)) {
                     ShellExecuteA(NULL, xor_str("open"), exeName, NULL, NULL, SW_SHOW);
                 }
